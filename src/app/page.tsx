@@ -3,8 +3,8 @@
 import { useState } from "react"
 import Link from "next/link"
 import {
-  Code2, Plus, Users, Clock, ChevronRight,
-  Zap, Globe, Lock, Search
+  Code2, Users, Clock, ChevronRight,
+  Zap, Search
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -13,34 +13,35 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Separator } from "@/components/ui/separator"
 import type { Session, Language } from "@/types"
+import CreateSession from "@/components/session/CreateSession"
 
 
 // just mock data, will be replaced by real backend data in furthur phases...........
 const MOCK_SESSIONS: Session[] = [
-  { id: "1", name: "Auth Service Refactor",   language: "rust",       ownerId: "u1", createdAt: "2024-01-15T10:00:00Z", updatedAt: "2024-01-15T14:32:00Z" },
-  { id: "2", name: "API Rate Limiter",         language: "rust",       ownerId: "u1", createdAt: "2024-01-14T09:00:00Z", updatedAt: "2024-01-14T17:00:00Z" },
-  { id: "3", name: "Dashboard Components",     language: "typescript", ownerId: "u1", createdAt: "2024-01-13T11:00:00Z", updatedAt: "2024-01-13T16:45:00Z" },
-  { id: "4", name: "Data Pipeline Script",     language: "python",     ownerId: "u1", createdAt: "2024-01-12T08:00:00Z", updatedAt: "2024-01-12T12:00:00Z" },
-  { id: "5", name: "WebSocket Load Test",      language: "go",         ownerId: "u1", createdAt: "2024-01-11T14:00:00Z", updatedAt: "2024-01-11T18:00:00Z" },
-  { id: "6", name: "Markdown Parser",          language: "typescript", ownerId: "u1", createdAt: "2024-01-10T10:00:00Z", updatedAt: "2024-01-10T15:00:00Z" },
+  { id: "1", name: "Auth Service Refactor", language: "rust", ownerId: "u1", createdAt: "2024-01-15T10:00:00Z", updatedAt: "2024-01-15T14:32:00Z" },
+  { id: "2", name: "API Rate Limiter", language: "rust", ownerId: "u1", createdAt: "2024-01-14T09:00:00Z", updatedAt: "2024-01-14T17:00:00Z" },
+  { id: "3", name: "Dashboard Components", language: "typescript", ownerId: "u1", createdAt: "2024-01-13T11:00:00Z", updatedAt: "2024-01-13T16:45:00Z" },
+  { id: "4", name: "Data Pipeline Script", language: "python", ownerId: "u1", createdAt: "2024-01-12T08:00:00Z", updatedAt: "2024-01-12T12:00:00Z" },
+  { id: "5", name: "WebSocket Load Test", language: "go", ownerId: "u1", createdAt: "2024-01-11T14:00:00Z", updatedAt: "2024-01-11T18:00:00Z" },
+  { id: "6", name: "Markdown Parser", language: "typescript", ownerId: "u1", createdAt: "2024-01-10T10:00:00Z", updatedAt: "2024-01-10T15:00:00Z" },
 ]
 
 const LANGUAGE_COLORS: Record<Language, string> = {
-  rust:       "bg-orange-950 text-orange-400 border-orange-900",
+  rust: "bg-orange-950 text-orange-400 border-orange-900",
   typescript: "bg-blue-950   text-blue-400   border-blue-900",
   javascript: "bg-yellow-950 text-yellow-400 border-yellow-900",
-  python:     "bg-green-950  text-green-400  border-green-900",
-  go:         "bg-cyan-950   text-cyan-400   border-cyan-900",
-  cpp:        "bg-purple-950 text-purple-400 border-purple-900",
-  java:       "bg-red-950    text-red-400    border-red-900",
-  markdown:   "bg-zinc-900   text-zinc-400   border-zinc-800",
+  python: "bg-green-950  text-green-400  border-green-900",
+  go: "bg-cyan-950   text-cyan-400   border-cyan-900",
+  cpp: "bg-purple-950 text-purple-400 border-purple-900",
+  java: "bg-red-950    text-red-400    border-red-900",
+  markdown: "bg-zinc-900   text-zinc-400   border-zinc-800",
 }
 
 function timeAgo(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime()
   const h = Math.floor(diff / 3600000)
   const d = Math.floor(diff / 86400000)
-  if (h < 1)  return "just now"
+  if (h < 1) return "just now"
   if (h < 24) return `${h}h ago`
   return `${d}d ago`
 }
@@ -115,6 +116,11 @@ export default function DashboardPage() {
     s.language.toLowerCase().includes(search.toLowerCase())
   )
 
+  function handleSessionCreated(name: string, language: Language) {
+    // TODO: add to real session list in Phase 12
+    console.log("Session created:", name, language)
+  }
+
   return (
     <div className="min-h-screen bg-background">
 
@@ -148,16 +154,13 @@ export default function DashboardPage() {
               Pick up where you left off or start something new
             </p>
           </div>
-          <Button className="bg-violet-600 hover:bg-violet-700 text-white gap-2">
-            <Plus className="w-4 h-4" />
-            New Session
-          </Button>
+          <CreateSession onCreated={handleSessionCreated} />
         </div>
 
         <div className="grid grid-cols-3 gap-4 mb-8">
-          <StatCard icon={Code2} label="Total sessions"   value={String(MOCK_SESSIONS.length)} color="bg-violet-950 text-violet-400" />
-          <StatCard icon={Zap}   label="Active today"     value="x"  color="bg-green-950 text-green-400" />
-          <StatCard icon={Users} label="Collaborators"    value="y"  color="bg-blue-950 text-blue-400" />
+          <StatCard icon={Code2} label="Total sessions" value={String(MOCK_SESSIONS.length)} color="bg-violet-950 text-violet-400" />
+          <StatCard icon={Zap} label="Active today" value="x" color="bg-green-950 text-green-400" />
+          <StatCard icon={Users} label="Collaborators" value="y" color="bg-blue-950 text-blue-400" />
         </div>
 
         <div className="relative mb-6">
