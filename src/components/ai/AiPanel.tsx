@@ -10,7 +10,6 @@ import AiMessage from "@/components/ai/AiMessage"
 import { useAiStore } from "@/store/aiStore"
 import type { AiMessage as AiMessageType } from "@/types"
 
-// mock messages to show the UI working
 const MOCK_MESSAGES: AiMessageType[] = [
   {
     id: "1",
@@ -33,10 +32,8 @@ export default function AiPanel() {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const { messages, isStreaming, clearMessages } = useAiStore()
 
-  // use mock messages if store is empty
   const displayMessages = messages.length > 0 ? messages : MOCK_MESSAGES
 
-  // auto scroll to bottom on new message
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
@@ -59,7 +56,6 @@ export default function AiPanel() {
 
   function handleSend() {
     if (!input.trim() || isStreaming) return
-    // TODO: wire to useWebSocket in Phase 12
     console.log("AI request:", input)
     setInput("")
     if (textareaRef.current) {
@@ -98,7 +94,6 @@ export default function AiPanel() {
         </Tooltip>
       </div>
 
-      {/* messages */}
       <ScrollArea className="flex-1 px-4 py-4" ref={scrollRef}>
         {displayMessages.length === 0 ? (
           // empty state
@@ -112,7 +107,6 @@ export default function AiPanel() {
                 Select code and ask me anything
               </p>
             </div>
-            {/* quick action chips */}
             <div className="flex flex-col gap-2 mt-2 w-full max-w-[200px]">
               {[
                 "Explain this code",
@@ -140,7 +134,6 @@ export default function AiPanel() {
 
       <Separator className="bg-border/50" />
 
-      {/* context indicator — shows selected code */}
       <div className="px-4 pt-2 flex-shrink-0">
         <div className="flex items-center gap-1.5 text-xs text-muted-foreground bg-muted/40 rounded-md px-2.5 py-1.5 border border-border/50">
           <Code className="w-3 h-3 flex-shrink-0" />
@@ -148,7 +141,6 @@ export default function AiPanel() {
         </div>
       </div>
 
-      {/* input area */}
       <div className="p-4 flex-shrink-0">
         <div className="flex gap-2 items-end">
           <div className="flex-1 relative">
