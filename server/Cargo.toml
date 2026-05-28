@@ -1,0 +1,61 @@
+[package]
+name    = "codesync-server"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "codesync-server"
+path = "src/main.rs"
+
+[dependencies]
+# ── async runtime ──────────────────────────────────────
+tokio  = { version = "1",   features = ["full"] }
+
+# ── web framework ──────────────────────────────────────
+axum   = { version = "0.7", features = ["ws", "macros"] }
+tower  = { version = "0.4" }
+tower-http = { version = "0.5", features = ["cors", "trace"] }
+
+# ── serialisation ──────────────────────────────────────
+serde       = { version = "1", features = ["derive"] }
+serde_json  = { version = "1" }
+
+# ── database ───────────────────────────────────────────
+sqlx = { version = "0.7", features = [
+  "runtime-tokio-rustls",
+  "postgres",
+  "uuid",
+  "chrono",
+  "migrate",
+]}
+
+# ── auth ───────────────────────────────────────────────
+jsonwebtoken = { version = "9" }
+argon2       = { version = "0.5" }
+uuid         = { version = "1", features = ["v4", "serde"] }
+
+# ── http client (for Groq API) ─────────────────────────
+reqwest = { version = "0.11", default-features = false, features = ["json", "stream", "rustls-tls"] }
+
+# ── error handling ─────────────────────────────────────
+anyhow  = { version = "1" }
+thiserror = { version = "1" }
+
+# ── config + env ───────────────────────────────────────
+dotenvy = { version = "0.15" }
+
+# ── time ───────────────────────────────────────────────
+chrono = { version = "0.4", features = ["serde"] }
+
+# ── logging ────────────────────────────────────────────
+tracing            = { version = "0.1" }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# ── concurrency ────────────────────────────────────────
+dashmap = { version = "5" }
+
+# ── OT ─────────────────────────────────────────────────
+operational-transform = { version = "0.6" }
+
+[profile.release]
+opt-level = 3

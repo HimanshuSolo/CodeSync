@@ -7,43 +7,29 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { useAuth } from "@/hooks/useAuth"
 
-// password rule checker
+
 const rules = [
   { label: "At least 8 characters", test: (p: string) => p.length >= 8 },
-  { label: "One uppercase letter",  test: (p: string) => /[A-Z]/.test(p) },
-  { label: "One number",            test: (p: string) => /[0-9]/.test(p) },
+  { label: "One uppercase letter", test: (p: string) => /[A-Z]/.test(p) },
+  { label: "One number", test: (p: string) => /[0-9]/.test(p) },
 ]
 
 export default function RegisterPage() {
   const [username, setUsername] = useState("")
-  const [email, setEmail]       = useState("")
+  const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [showPass, setShowPass] = useState(false)
-  const [loading, setLoading]   = useState(false)
-  const [error, setError]       = useState("")
+  const { register, loading, error, clearError } = useAuth()
   const [showRules, setShowRules] = useState(false)
-
   const allRulesPassed = rules.every((r) => r.test(password))
 
   async function handleRegister(e: React.FormEvent) {
     e.preventDefault()
-    setError("")
-
-    if (!username || !email || !password) {
-      setError("Please fill in all fields")
-      return
-    }
-    if (!allRulesPassed) {
-      setError("Password does not meet requirements")
-      return
-    }
-
-    setLoading(true)
-    // TODO: wire to Rust backend in Phase 8
-    await new Promise((r) => setTimeout(r, 1000))
-    setLoading(false)
-    setError("Backend not connected yet — coming in Phase 8")
+    clearError()
+    if (!username || !email || !password || !allRulesPassed) return
+    await register(email, username, password)
   }
 
   return (

@@ -7,27 +7,21 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { useAuth } from "@/hooks/useAuth"
+
 
 export default function LoginPage() {
-  const [email, setEmail]       = useState("")
+  const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [showPass, setShowPass] = useState(false)
-  const [loading, setLoading]   = useState(false)
-  const [error, setError]       = useState("")
+  const { login, loading, error, clearError } = useAuth()
+
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault()
-    setError("")
-
-    if (!email || !password) {
-      setError("Please fill in all fields")
-      return
-    }
-
-    setLoading(true)
-    await new Promise((r) => setTimeout(r, 1000)) 
-    setLoading(false)
-    setError("Backend not connected yet")
+    clearError()
+    if (!email || !password) return
+    await login(email, password)
   }
 
   return (
