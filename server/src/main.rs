@@ -1,6 +1,6 @@
 use axum::{
     middleware as axum_middleware,
-    routing::{get, post},
+    routing::{delete, get, post},
     Router,
 };
 use tower_http::cors::{Any, CorsLayer};
@@ -18,9 +18,8 @@ mod state;
 mod ws;
 
 use config::Config;
-use routes::health;
-use routes::auth;
 use crate::middleware as mw;
+use routes::{auth, health, sessions};
 use state::AppState;
 
 #[tokio::main]
@@ -59,25 +58,32 @@ async fn main() {
         .allow_methods(Any)
         .allow_headers(Any);
 
-    // ── public routes — no auth needed ───────────────────
+    // ── public routes ─────────────────────────────────────
     let public_routes = Router::new()
         .route("/",                get(health::root))
         .route("/healthz",         get(health::health_check))
         .route("/auth/register",   post(auth::register))
         .route("/auth/login",      post(auth::login));
 
-    // ── protected routes — JWT required ──────────────────
+    // ── protected routes — JWT middleware applied ─────────
     let protected_routes = Router::new()
-        .route("/auth/me", get(auth::me))
+        .route("/auth/me",              get(auth::me))
+        .route("/sessions",             get(sessions::list_sessions))
+        .route("/sessions",             post(sessions::create_session))
+        .route("/sessions/:id",         get(sessions::get_session))
+        .route("/sessions/:id",         delete(sessions::delete_session))
         .layer(axum_middleware::from_fn_with_state(
             state.clone(),
             mw::auth::require_auth,
         ));
 
-    // ── combine all routes ────────────────────────────────
+    let websocket_routes = Router::new()
+        .route("/session/:id/ws",       get(ws::handler::ws_handler));
+
     let app = Router::new()
         .merge(public_routes)
         .merge(protected_routes)
+        .merge(websocket_routes)
         .with_state(state)
         .layer(cors)
         .layer(TraceLayer::new_for_http());

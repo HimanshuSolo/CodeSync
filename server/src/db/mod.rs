@@ -89,7 +89,7 @@ pub mod users {
     }
 }
 
-// ── Session queries ───────────────────────────────────────────────────────────
+// Session queries
 pub mod sessions {
     use sqlx::PgPool;
     use uuid::Uuid;
@@ -189,4 +189,46 @@ pub mod sessions {
         .await?;
         Ok(result.rows_affected() > 0)
     }
-}// Phase 7 — Database connection pool
+
+
+    /// Check if a user is a member of a session
+    pub async fn is_member(
+        pool:       &PgPool,
+        session_id: Uuid,
+        user_id:    Uuid,
+    ) -> AppResult<bool> {
+        let row = sqlx::query!(
+            r#"
+            SELECT EXISTS(
+                SELECT 1 FROM session_members
+                WHERE session_id = $1 AND user_id = $2
+            ) as exists
+            "#,
+            session_id,
+            user_id
+        )
+        .fetch_one(pool)
+        .await?;
+
+        Ok(row.exists.unwrap_or(false))
+    }
+
+    pub async fn add_member(
+        pool:       &PgPool,
+        session_id: Uuid,
+        user_id:    Uuid,
+    ) -> AppResult<()> {
+        sqlx::query!(
+            r#"
+            INSERT INTO session_members (session_id, user_id)
+            VALUES ($1, $2)
+            ON CONFLICT DO NOTHING
+            "#,
+            session_id,
+            user_id
+        )
+        .execute(pool)
+        .await?;
+        Ok(())
+    }
+}

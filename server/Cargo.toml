@@ -11,6 +11,8 @@ path = "src/main.rs"
 # ── async runtime ──────────────────────────────────────
 tokio  = { version = "1",   features = ["full"] }
 
+futures = { version = "0.3" }
+
 # ── web framework ──────────────────────────────────────
 axum   = { version = "0.7", features = ["ws", "macros"] }
 tower  = { version = "0.4" }
