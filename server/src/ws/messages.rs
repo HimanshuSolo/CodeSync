@@ -1,5 +1,4 @@
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
 /// Messages the CLIENT sends to the server.
 /// #[serde(tag = "type", content = "payload")] matches
@@ -44,7 +43,7 @@ pub struct EditOp {
     pub user_id:  String,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub enum OpType {
     Insert,
@@ -84,3 +83,4 @@ pub struct AiRequest {
     pub start_line:    u32,
     pub end_line:      u32,
 }
+
