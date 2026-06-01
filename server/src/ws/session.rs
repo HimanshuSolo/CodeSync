@@ -7,7 +7,7 @@ use crate::{
     db,
     middleware::auth::CurrentUser,
     state::{AppState, SessionHandle},
-    ws::messages::{ClientMessage, ServerMessage, Participant},
+    ws::messages::{ClientMessage, EditOp, Participant, ServerMessage},
 };
 
 /// The session actor manages one collaborative session.
@@ -53,8 +53,9 @@ impl SessionActor {
         // spawn the actor task
         let db   = state.db.clone();
         let sid  = session_id;
+        let groq_api_key = state.config.groq_api_key.clone();
         tokio::spawn(async move {
-            run_actor(sid, document, revision, rx, broadcast_tx, db).await;
+            run_actor(sid, document, revision, rx, broadcast_tx, db, groq_api_key).await;
         });
 
         tracing::info!("Session actor started for {}", session_id);
@@ -175,10 +176,12 @@ async fn run_actor(
     mut rx:       mpsc::Receiver<ActorMessage>,
     broadcast_tx: broadcast::Sender<ServerMessage>,
     db:           sqlx::PgPool,
+    groq_api_key: String,
 ) {
     let mut doc      = document;
     let mut rev      = revision;
     let mut participants: Vec<Participant> = Vec::new();
+    let mut history: Vec<EditOp> = Vec::new();
 
     while let Some(msg) = rx.recv().await {
         match msg {
@@ -222,42 +225,56 @@ async fn run_actor(
             ActorMessage::ClientMsg { user_id, msg } => {
                 match msg {
 
-                    ClientMessage::Edit(mut op) => {
-                        // apply the edit to the document
-                        // (simplified — full OT in Phase 10)
-                        if op.op_type == crate::ws::messages::OpType::Insert {
-                            if op.position <= doc.len() {
-                                doc.insert_str(op.position, &op.text);
-                            }
-                        } else {
-                            let end = (op.position + op.text.len()).min(doc.len());
-                            if op.position < doc.len() {
-                                doc.drain(op.position..end);
-                            }
-                        }
+                    ClientMessage::Edit(op) => {
+    // ── OT: transform against ops since client's revision ──
+    // op.revision = what the client based this edit on
+    // rev         = current server revision
+    // if they differ, client missed some ops — transform
+    let client_rev = op.revision as i64;
+    let ops_since: Vec<EditOp> = history
+        .iter()
+        .skip(client_rev as usize)
+        .cloned()
+        .collect();
 
-                        // increment revision
-                        rev += 1;
-                        op.revision = rev as u64;
+    let mut transformed = op.clone();
+    for past_op in &ops_since {
+        transformed = ot::transform(transformed, past_op);
+    }
 
-                        // persist to DB every 10 revisions
-                        if rev % 10 == 0 {
-                            let db2 = db.clone();
-                            let d   = doc.clone();
-                            let r   = rev;
-                            let sid = session_id;
-                            tokio::spawn(async move {
-                                if let Err(e) = db::sessions::update_document(
-                                    &db2, sid, &d, r
-                                ).await {
-                                    tracing::error!("Failed to persist document: {e}");
-                                }
-                            });
-                        }
+    // ── apply transformed op to document ──────────────────
+    ot::apply(&mut doc, &transformed);
 
-                        // broadcast resolved op to ALL clients
-                        let _ = broadcast_tx.send(ServerMessage::Edit(op));
-                    }
+    // ── increment revision ─────────────────────────────────
+    rev += 1;
+    transformed.revision = rev as u64;
+
+    // ── store in history for future transforms ─────────────
+    history.push(transformed.clone());
+
+    // ── keep history bounded — last 1000 ops ──────────────
+    if history.len() > 1000 {
+        history.drain(0..100);
+    }
+
+    // ── persist every 10 revisions ─────────────────────────
+    if rev % 10 == 0 {
+        let db2 = db.clone();
+        let d   = doc.clone();
+        let r   = rev;
+        let sid = session_id;
+        tokio::spawn(async move {
+            if let Err(e) = db::sessions::update_document(
+                &db2, sid, &d, r
+            ).await {
+                tracing::error!("Failed to persist document: {e}");
+            }
+        });
+    }
+
+    // ── broadcast resolved op to all clients ───────────────
+    let _ = broadcast_tx.send(ServerMessage::Edit(transformed));
+}
 
                     ClientMessage::Cursor(pos) => {
                         // update participant cursor in memory
@@ -272,15 +289,30 @@ async fn run_actor(
                     }
 
                     ClientMessage::AiRequest(req) => {
-                        // Phase 11 — Groq AI streaming
-                        tracing::info!(
-                            "AI request from {}: {}",
-                            user_id, req.prompt
-                        );
-                        let _ = broadcast_tx.send(ServerMessage::Error {
-                            message: "AI not yet connected — coming in Phase 11".into(),
-                        });
-                    }
+    tracing::info!(
+        "AI request in session {}: {}",
+        session_id, req.prompt
+    );
+
+    let api_key      = groq_api_key.clone();
+    let broadcast_tx2 = broadcast_tx.clone();
+    let message_id   = uuid::Uuid::new_v4().to_string();
+    let prompt       = req.prompt.clone();
+    let code         = req.selected_code.clone();
+    let lang         = req.language.clone();
+
+    // spawn AI task so it doesn't block the actor loop
+    tokio::spawn(async move {
+        crate::ai::groq::stream_ai_response(
+            &api_key,
+            &prompt,
+            &code,
+            &lang,
+            &message_id,
+            &broadcast_tx2,
+        ).await;
+    });
+}
 
                     ClientMessage::Ping => {
                         let _ = broadcast_tx.send(ServerMessage::Pong);
@@ -291,4 +323,80 @@ async fn run_actor(
     }
 
     tracing::info!("Session actor stopped for {}", session_id);
+}
+
+// ── Operational Transform ─────────────────────────────────────────────────────
+
+pub mod ot {
+    use crate::ws::messages::{EditOp, OpType};
+
+    /// Transform op_a against op_b — returns adjusted op_a.
+    /// Called when op_a was based on a revision that op_b
+    /// has already been applied to.
+    pub fn transform(mut op_a: EditOp, op_b: &EditOp) -> EditOp {
+        match (&op_a.op_type, &op_b.op_type) {
+
+            // ── insert vs insert ──────────────────────────
+            (OpType::Insert, OpType::Insert) => {
+                if op_b.position < op_a.position
+                || (op_b.position == op_a.position
+                    && op_b.user_id < op_a.user_id) // tiebreak by user_id
+                {
+                    op_a.position += op_b.text.len();
+                }
+                op_a
+            }
+
+            // ── insert vs delete ──────────────────────────
+            (OpType::Insert, OpType::Delete) => {
+                if op_b.position < op_a.position {
+                    let shift = op_b.text.len().min(
+                        op_a.position - op_b.position
+                    );
+                    op_a.position -= shift;
+                }
+                op_a
+            }
+
+            // ── delete vs insert ──────────────────────────
+            (OpType::Delete, OpType::Insert) => {
+                if op_b.position <= op_a.position {
+                    op_a.position += op_b.text.len();
+                }
+                op_a
+            }
+
+            // ── delete vs delete ──────────────────────────
+            (OpType::Delete, OpType::Delete) => {
+                if op_b.position < op_a.position {
+                    let shift = op_b.text.len().min(
+                        op_a.position - op_b.position
+                    );
+                    op_a.position -= shift;
+                } else if op_b.position == op_a.position {
+                    // both deleting same position — op_a becomes no-op
+                    op_a.text = String::new();
+                }
+                op_a
+            }
+        }
+    }
+
+    /// Apply an edit op to a document string.
+    /// Returns the new document.
+    pub fn apply(doc: &mut String, op: &EditOp) {
+        match op.op_type {
+            OpType::Insert => {
+                let pos = op.position.min(doc.len());
+                doc.insert_str(pos, &op.text);
+            }
+            OpType::Delete => {
+                let start = op.position.min(doc.len());
+                let end   = (op.position + op.text.len()).min(doc.len());
+                if start < end {
+                    doc.drain(start..end);
+                }
+            }
+        }
+    }
 }
