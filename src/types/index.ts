@@ -41,6 +41,7 @@ export interface EditOp {
   opType: OpType
   revision: number
   userId: string
+  clientId?: string
 }
 
 export interface CursorPosition {

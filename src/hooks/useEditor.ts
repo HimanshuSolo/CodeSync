@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useRef } from "react"
+import { useCallback, useEffect, useRef } from "react"
 import type * as Monaco from "monaco-editor"
 import { useSessionStore } from "@/store/sessionStore"
 import { useAiStore } from "@/store/aiStore"
@@ -10,15 +10,26 @@ import type { EditOp, AiRequest } from "@/types"
 interface UseEditorProps {
   send: (msg: ClientMessage) => void
   userId: string
+  clientId: string
   language: string
 }
 
-export function useEditor({ send, userId, language }: UseEditorProps) {
+export function useEditor({ send, userId, clientId, language }: UseEditorProps) {
   const editorRef   = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null)
   const revisionRef = useRef(0)
+  const documentRef = useRef("")
+  const applyingRemoteEditRef = useRef(false)
 
-  const { revision, setDocument } = useSessionStore()
+  const { document, revision, setDocument, setRevision } = useSessionStore()
   const { addUserMessage, startStreaming } = useAiStore()
+
+  useEffect(() => {
+    revisionRef.current = revision
+  }, [revision])
+
+  useEffect(() => {
+    documentRef.current = document
+  }, [document])
 
   // ── called when Monaco mounts ────────────────────────
   const handleEditorMount = useCallback((
@@ -58,21 +69,57 @@ export function useEditor({ send, userId, language }: UseEditorProps) {
   // ── called on every keystroke ────────────────────────
   const handleChange = useCallback((value: string | undefined) => {
     if (value === undefined) return
-    setDocument(value)
 
-    // TODO: diff against previous value to generate
-    // a precise EditOp (insert/delete at position)
-    // For now we send the full document as a placeholder
-    // This gets replaced with real OT in Phase 12
-    const op: EditOp = {
-      position: 0,
-      text:     value,
-      opType:   "insert",
-      revision: revisionRef.current,
-      userId,
+    if (applyingRemoteEditRef.current) {
+      documentRef.current = value
+      setDocument(value)
+      return
     }
 
-    send({ type: "edit", payload: op })
+    const previousValue = documentRef.current
+    if (value === previousValue) return
+
+    setDocument(value)
+
+    documentRef.current = value
+
+    let index = 0
+    while (
+      index < previousValue.length &&
+      index < value.length &&
+      previousValue[index] === value[index]
+    ) {
+      index += 1
+    }
+
+    if (value.length > previousValue.length) {
+      const insertedText = value.slice(index, index + (value.length - previousValue.length))
+      const op: EditOp = {
+        position: index,
+        text: insertedText,
+        opType: "insert",
+        revision: revisionRef.current,
+        userId,
+        clientId,
+      }
+
+      send({ type: "edit", payload: op })
+      return
+    }
+
+    if (value.length < previousValue.length) {
+      const deletedText = previousValue.slice(index, index + (previousValue.length - value.length))
+      const op: EditOp = {
+        position: index,
+        text: deletedText,
+        opType: "delete",
+        revision: revisionRef.current,
+        userId,
+        clientId,
+      }
+
+      send({ type: "edit", payload: op })
+    }
   }, [send, userId, setDocument])
 
   // ── called on cursor move ────────────────────────────
@@ -115,38 +162,52 @@ export function useEditor({ send, userId, language }: UseEditorProps) {
   // ── apply a remote edit to the editor ───────────────
   // Called when the server broadcasts a resolved EditOp
   const applyRemoteEdit = useCallback((op: EditOp) => {
+    if (op.clientId && op.clientId === clientId) {
+      revisionRef.current = op.revision
+      setRevision(op.revision)
+      return
+    }
+
     const editor = editorRef.current
     const model  = editor?.getModel()
     if (!model) return
 
     revisionRef.current = op.revision
+    applyingRemoteEditRef.current = true
 
-    // convert flat position to line/column
-    const start = model.getPositionAt(op.position)
+    try {
+      const start = model.getPositionAt(op.position)
 
-    if (op.opType === "insert") {
-      model.applyEdits([{
-        range: {
-          startLineNumber: start.lineNumber,
-          startColumn:     start.column,
-          endLineNumber:   start.lineNumber,
-          endColumn:       start.column,
-        },
-        text: op.text,
-      }])
-    } else {
-      const end = model.getPositionAt(op.position + op.text.length)
-      model.applyEdits([{
-        range: {
-          startLineNumber: start.lineNumber,
-          startColumn:     start.column,
-          endLineNumber:   end.lineNumber,
-          endColumn:       end.column,
-        },
-        text: "",
-      }])
+      if (op.opType === "insert") {
+        model.applyEdits([{
+          range: {
+            startLineNumber: start.lineNumber,
+            startColumn:     start.column,
+            endLineNumber:   start.lineNumber,
+            endColumn:       start.column,
+          },
+          text: op.text,
+        }])
+      } else {
+        const end = model.getPositionAt(op.position + op.text.length)
+        model.applyEdits([{
+          range: {
+            startLineNumber: start.lineNumber,
+            startColumn:     start.column,
+            endLineNumber:   end.lineNumber,
+            endColumn:       end.column,
+          },
+          text: "",
+        }])
+      }
+
+      const nextValue = model.getValue()
+      documentRef.current = nextValue
+      setDocument(nextValue)
+    } finally {
+      applyingRemoteEditRef.current = false
     }
-  }, [])
+  }, [clientId, setDocument, setRevision])
 
   return {
     handleEditorMount,

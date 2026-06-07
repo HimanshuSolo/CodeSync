@@ -22,16 +22,17 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import type { Language } from "@/types"
+import { sessionApi } from "@/lib/api"
 
 const LANGUAGES: { value: Language; label: string; color: string }[] = [
-  { value: "rust",       label: "Rust",       color: "text-orange-400" },
-  { value: "typescript", label: "TypeScript", color: "text-blue-400"   },
+  { value: "rust", label: "Rust", color: "text-orange-400" },
+  { value: "typescript", label: "TypeScript", color: "text-blue-400" },
   { value: "javascript", label: "JavaScript", color: "text-yellow-400" },
-  { value: "python",     label: "Python",     color: "text-green-400"  },
-  { value: "go",         label: "Go",         color: "text-cyan-400"   },
-  { value: "cpp",        label: "C++",        color: "text-purple-400" },
-  { value: "java",       label: "Java",       color: "text-red-400"    },
-  { value: "markdown",   label: "Markdown",   color: "text-zinc-400"   },
+  { value: "python", label: "Python", color: "text-green-400" },
+  { value: "go", label: "Go", color: "text-cyan-400" },
+  { value: "cpp", label: "C++", color: "text-purple-400" },
+  { value: "java", label: "Java", color: "text-red-400" },
+  { value: "markdown", label: "Markdown", color: "text-zinc-400" },
 ]
 
 interface CreateSessionProps {
@@ -39,11 +40,11 @@ interface CreateSessionProps {
 }
 
 export default function CreateSession({ onCreated }: CreateSessionProps) {
-  const [open, setOpen]         = useState(false)
-  const [name, setName]         = useState("")
+  const [open, setOpen] = useState(false)
+  const [name, setName] = useState("")
   const [language, setLanguage] = useState<Language>("typescript")
-  const [loading, setLoading]   = useState(false)
-  const [error, setError]       = useState("")
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState("")
 
   function reset() {
     setName("")
@@ -54,7 +55,6 @@ export default function CreateSession({ onCreated }: CreateSessionProps) {
 
   async function handleCreate() {
     setError("")
-
     if (!name.trim()) {
       setError("Session name is required")
       return
@@ -65,12 +65,18 @@ export default function CreateSession({ onCreated }: CreateSessionProps) {
     }
 
     setLoading(true)
-    await new Promise((r) => setTimeout(r, 800))
-    setLoading(false)
-
-    onCreated?.(name.trim(), language)
-    setOpen(false)
-    reset()
+    try {
+      const res = await sessionApi.create(name.trim(), language)
+      onCreated?.(name.trim(), language)
+      setOpen(false)
+      reset()
+      // navigate to the new session
+      window.location.href = `/session/${res.session.id}`
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to create session")
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (

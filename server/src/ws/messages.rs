@@ -41,6 +41,8 @@ pub struct EditOp {
     pub op_type:  OpType,
     pub revision: u64,
     pub user_id:  String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub client_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

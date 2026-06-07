@@ -6,16 +6,18 @@ import { Code2, Eye, EyeOff, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  Card, CardContent, CardDescription,
+  CardFooter, CardHeader, CardTitle,
+} from "@/components/ui/card"
 import { useAuth } from "@/hooks/useAuth"
 
-
 export default function LoginPage() {
-  const [email, setEmail] = useState("")
+  const [email, setEmail]       = useState("")
   const [password, setPassword] = useState("")
   const [showPass, setShowPass] = useState(false)
-  const { login, loading, error, clearError } = useAuth()
 
+  const { login, loading, error, clearError } = useAuth()
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault()
@@ -26,8 +28,6 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
-
-      {/* top bar */}
       <div className="p-6">
         <Link href="/" className="flex items-center gap-2 w-fit hover:opacity-80 transition-opacity">
           <div className="w-7 h-7 rounded-md bg-violet-600 flex items-center justify-center">
@@ -41,18 +41,14 @@ export default function LoginPage() {
 
       <div className="flex-1 flex items-center justify-center px-4">
         <div className="w-full max-w-sm">
-
           <Card className="border-border bg-card">
             <CardHeader className="space-y-1 pb-4">
               <CardTitle className="text-2xl font-bold">Welcome back</CardTitle>
-              <CardDescription>
-                Sign in to your CodeSync account
-              </CardDescription>
+              <CardDescription>Sign in to your CodeSync account</CardDescription>
             </CardHeader>
 
             <CardContent>
               <form onSubmit={handleLogin} className="space-y-4">
-
                 {error && (
                   <div className="text-sm text-red-400 bg-red-950/40 border border-red-900 rounded-md px-3 py-2">
                     {error}
@@ -64,7 +60,7 @@ export default function LoginPage() {
                   <Input
                     id="email"
                     type="email"
-                    placeholder="xyz@example.com"
+                    placeholder="you@example.com"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     disabled={loading}
@@ -75,10 +71,7 @@ export default function LoginPage() {
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <Label htmlFor="password">Password</Label>
-                    <button
-                      type="button"
-                      className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-                    >
+                    <button type="button" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
                       Forgot password?
                     </button>
                   </div>
@@ -86,7 +79,7 @@ export default function LoginPage() {
                     <Input
                       id="password"
                       type={showPass ? "text" : "password"}
-                      placeholder="Your password"
+                      placeholder="••••••••"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       disabled={loading}
@@ -99,7 +92,7 @@ export default function LoginPage() {
                     >
                       {showPass
                         ? <EyeOff className="w-4 h-4" />
-                        : <Eye className="w-4 h-4" />
+                        : <Eye    className="w-4 h-4" />
                       }
                     </button>
                   </div>
@@ -111,11 +104,10 @@ export default function LoginPage() {
                   disabled={loading}
                 >
                   {loading
-                    ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Signing in...</>
+                    ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Signing in...</>
                     : "Sign in"
                   }
                 </Button>
-
               </form>
             </CardContent>
 
@@ -128,11 +120,6 @@ export default function LoginPage() {
               </p>
             </CardFooter>
           </Card>
-
-          <p className="text-center text-xs text-muted-foreground mt-6">
-            Okaeri, welcome back! We missed you. <br />
-          </p>
-
         </div>
       </div>
     </div>

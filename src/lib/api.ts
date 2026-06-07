@@ -1,17 +1,14 @@
-// base api configuration
-// All fetch calls go through these helpers
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080"
-
-// ── generic request helper ──────────────────────────────
+// ── generic request helper ────────────────────────────────────────────────────
 async function request<T>(
   endpoint: string,
-  options: RequestInit = {}
+  options: RequestInit = {},
 ): Promise<T> {
   const token =
     typeof window !== "undefined"
       ? localStorage.getItem("codesync_token")
-      : null
+      : null;
 
   const res = await fetch(`${BASE_URL}${endpoint}`, {
     ...options,
@@ -20,46 +17,61 @@ async function request<T>(
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...options.headers,
     },
-  })
+  });
 
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ message: res.statusText }))
-    throw new Error(err.message || "Request failed")
+    const err = await res.json().catch(() => ({ message: res.statusText }));
+    throw new Error(err.message || "Request failed");
   }
 
-  return res.json()
+  return res.json();
 }
 
-// ── auth endpoints ───────────────────────────────────────
+// ── auth ──────────────────────────────────────────────────────────────────────
 export const authApi = {
   login: (email: string, password: string) =>
-    request<{ token: string; user_id: string; username: string; avatar_color: string }>(
-      "/auth/login",
-      {
-        method: "POST",
-        body: JSON.stringify({ email, password }),
-      }
-    ),
+    request<{
+      token: string;
+      user: {
+        id: string;
+        email: string;
+        username: string;
+        avatar_color: string;
+        created_at: string;
+      };
+    }>("/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ email, password }),
+    }),
 
   register: (email: string, username: string, password: string) =>
-    request<{ token: string; user_id: string; username: string; avatar_color: string }>(
-      "/auth/register",
-      {
-        method: "POST",
-        body: JSON.stringify({ email, username, password }),
-      }
-    ),
+    request<{
+      token: string;
+      user: {
+        id: string;
+        email: string;
+        username: string;
+        avatar_color: string;
+        created_at: string;
+      };
+    }>("/auth/register", {
+      method: "POST",
+      body: JSON.stringify({ email, username, password }),
+    }),
 
   me: () =>
-    request<{ id: string; email: string; username: string; avatar_color: string }>(
-      "/auth/me"
-    ),
-}
+    request<{
+      id: string;
+      email: string;
+      username: string;
+      avatar_color: string;
+      created_at: string;
+    }>("/auth/me"),
+};
 
-// ── session endpoints ────────────────────────────────────
+// ── sessions ──────────────────────────────────────────────────────────────────
 export const sessionApi = {
-  list: () =>
-    request<{ sessions: import("@/types").Session[] }>("/sessions"),
+  list: () => request<{ sessions: import("@/types").Session[] }>("/sessions"),
 
   create: (name: string, language: import("@/types").Language) =>
     request<{ session: import("@/types").Session }>("/sessions", {
@@ -71,5 +83,7 @@ export const sessionApi = {
     request<{ session: import("@/types").Session }>(`/sessions/${id}`),
 
   delete: (id: string) =>
-    request<{ message: string }>(`/sessions/${id}`, { method: "DELETE" }),
-}
+    request<{ message: string }>(`/sessions/${id}`, {
+      method: "DELETE",
+    }),
+};
