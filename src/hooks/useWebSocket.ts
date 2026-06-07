@@ -18,6 +18,7 @@ export function useWebSocket(
   onRemoteEdit?: (op: EditOp) => void,
 ) {
   const wsRef = useRef<WebSocket | null>(null);
+  const connectRef = useRef<() => void>(() => {});
   const reconnectRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reconnectAttempts = useRef(0);
   const [status, setStatus] = useState<WsStatus>("disconnected");
@@ -32,7 +33,7 @@ export function useWebSocket(
     removeParticipant,
   } = useSessionStore();
 
-  const { appendToken, finishStreaming, startStreaming } = useAiStore();
+  const { appendToken, finishStreaming } = useAiStore();
 
   // ── message handler ──────────────────────────────────
   const handleMessage = useCallback(
@@ -100,6 +101,7 @@ export function useWebSocket(
       removeParticipant,
       appendToken,
       finishStreaming,
+      onRemoteEdit,
     ],
   );
 
@@ -135,9 +137,13 @@ export function useWebSocket(
       // exponential backoff reconnect — max 30s
       const delay = Math.min(1000 * 2 ** reconnectAttempts.current, 30000);
       reconnectAttempts.current += 1;
-      reconnectRef.current = setTimeout(connect, delay);
+      reconnectRef.current = setTimeout(() => connectRef.current(), delay);
     };
   }, [sessionId, token, handleMessage]);
+
+  useEffect(() => {
+    connectRef.current = connect;
+  }, [connect]);
 
   // ── send a message ───────────────────────────────────
   const send = useCallback((msg: ClientMessage) => {

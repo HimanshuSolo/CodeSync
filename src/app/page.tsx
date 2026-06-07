@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import {
-  Code2, Plus, Users, Clock,
+  Code2, Users, Clock,
   ChevronRight, Zap, Search, LogOut,
 } from "lucide-react"
 import { Button }                from "@/components/ui/button"
@@ -101,6 +101,7 @@ export default function DashboardPage() {
   const [search, setSearch] = useState("")
   const [loading, setLoading] = useState(true)
   const [error, setError]   = useState("")
+  const [now] = useState(() => Date.now())
 
   // redirect to login if not authenticated
   useEffect(() => {
@@ -123,7 +124,7 @@ export default function DashboardPage() {
     fetchSessions()
   }, [setSessions])
 
-  function handleSessionCreated(name: string, language: Language) {
+  function handleSessionCreated() {
     // refetch sessions after creation
     sessionApi.list()
       .then((res) => setSessions(res.sessions))
@@ -207,7 +208,7 @@ export default function DashboardPage() {
                 <p className="text-xs text-muted-foreground">Active today</p>
                 <p className="text-lg font-bold">
                   {sessions.filter(s =>
-                    Date.now() - new Date(s.updatedAt).getTime() < 86400000
+                    now - new Date(s.updatedAt).getTime() < 86400000
                   ).length}
                 </p>
               </div>

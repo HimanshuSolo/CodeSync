@@ -70,7 +70,11 @@ export const useSessionStore = create<SessionState>((set) => ({
 
   addParticipant: (participant) =>
     set((state) => ({
-      participants: [...state.participants, participant],
+      participants: state.participants.some((p) => p.userId === participant.userId)
+        ? state.participants.map((p) =>
+            p.userId === participant.userId ? { ...p, ...participant, isOnline: true } : p,
+          )
+        : [...state.participants, participant],
     })),
 
   removeParticipant: (userId) =>

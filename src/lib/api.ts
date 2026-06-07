@@ -87,3 +87,20 @@ export const sessionApi = {
       method: "DELETE",
     }),
 };
+
+// ── compile ──────────────────────────────────────────────────────────────────
+export interface CompileResult {
+  success: boolean;
+  stdout: string;
+  stderr: string;
+  exit_code: number | null;
+  duration_ms: number;
+}
+
+export const compileApi = {
+  rust: (code: string) =>
+    request<CompileResult>("/compile/rust", {
+      method: "POST",
+      body: JSON.stringify({ code }),
+    }),
+};

@@ -10,37 +10,46 @@ const USER_KEY = "codesync_user";
 
 export function useAuth() {
   const router = useRouter();
+
   const [user, setUser] = useState<AuthUser | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [hydrated, setHydrated] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // load from localStorage on mount
+  // Load user from localStorage AFTER hydration
   useEffect(() => {
     try {
       const stored = localStorage.getItem(USER_KEY);
-      if (stored) setUser(JSON.parse(stored));
+
+      if (stored) {
+        setUser(JSON.parse(stored) as AuthUser);
+      }
     } catch {
       localStorage.removeItem(USER_KEY);
       localStorage.removeItem(TOKEN_KEY);
     } finally {
-      setLoading(false);
+      setHydrated(true);
     }
   }, []);
 
-  // persist to localStorage on change
+  // Persist user
   useEffect(() => {
+    if (!hydrated) return;
+
     if (user) {
       localStorage.setItem(USER_KEY, JSON.stringify(user));
       localStorage.setItem(TOKEN_KEY, user.token);
     }
-  }, [user]);
+  }, [user, hydrated]);
 
   const login = useCallback(
     async (email: string, password: string) => {
       setError(null);
       setLoading(true);
+
       try {
         const res = await authApi.login(email, password);
+
         const authUser: AuthUser = {
           id: res.user.id,
           email: res.user.email,
@@ -48,6 +57,7 @@ export function useAuth() {
           avatarColor: res.user.avatar_color,
           token: res.token,
         };
+
         setUser(authUser);
         router.push("/");
       } catch (err) {
@@ -56,15 +66,17 @@ export function useAuth() {
         setLoading(false);
       }
     },
-    [router],
+    [router]
   );
 
   const register = useCallback(
     async (email: string, username: string, password: string) => {
       setError(null);
       setLoading(true);
+
       try {
         const res = await authApi.register(email, username, password);
+
         const authUser: AuthUser = {
           id: res.user.id,
           email: res.user.email,
@@ -72,6 +84,7 @@ export function useAuth() {
           avatarColor: res.user.avatar_color,
           token: res.token,
         };
+
         setUser(authUser);
         router.push("/");
       } catch (err) {
@@ -80,20 +93,23 @@ export function useAuth() {
         setLoading(false);
       }
     },
-    [router],
+    [router]
   );
 
   const logout = useCallback(() => {
     setUser(null);
-    localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(USER_KEY);
+    localStorage.removeItem(TOKEN_KEY);
     router.push("/login");
   }, [router]);
 
-  const clearError = useCallback(() => setError(null), []);
+  const clearError = useCallback(() => {
+    setError(null);
+  }, []);
 
   return {
     user,
+    hydrated,
     loading,
     error,
     isAuthenticated: !!user,

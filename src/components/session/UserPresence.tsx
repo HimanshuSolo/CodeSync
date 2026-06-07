@@ -5,36 +5,8 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
+import { useSessionStore } from "@/store/sessionStore"
 import type { Participant } from "@/types"
-
-const MOCK_PARTICIPANTS: Participant[] = [
-  {
-    userId:      "u1",
-    username:    "himanshu",
-    avatarColor: "#7c3aed",
-    cursorLine:  12,
-    cursorCol:   8,
-    isOnline:    true,
-  },
-  {
-    userId:      "u2",
-    username:    "priya",
-    avatarColor: "#0891b2",
-    cursorLine:  34,
-    cursorCol:   22,
-    isOnline:    true,
-  },
-  {
-    userId:      "u3",
-    username:    "rahul",
-    avatarColor: "#059669",
-    cursorLine:  0,
-    cursorCol:   0,
-    isOnline:    false,
-  },
-]
-
-const CURRENT_USER_ID = "u1"
 
 function getInitials(name: string): string {
   return name.slice(0, 2).toUpperCase()
@@ -45,7 +17,8 @@ function UserRow({ participant, isOwner }: {
   participant: Participant
   isOwner: boolean
 }) {
-  const isMe = participant.userId === CURRENT_USER_ID
+  const currentUserId = useSessionStore((state) => state.currentUserId)
+  const isMe = participant.userId === currentUserId
 
   return (
     <div className="flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-muted/40 transition-colors">
@@ -111,8 +84,9 @@ function UserRow({ participant, isOwner }: {
 }
 
 export default function UserPresence({ ownerId = "u1" }: { ownerId?: string }) {
-  const online  = MOCK_PARTICIPANTS.filter((p) => p.isOnline)
-  const offline = MOCK_PARTICIPANTS.filter((p) => !p.isOnline)
+  const participants = useSessionStore((state) => state.participants)
+  const online  = participants.filter((p) => p.isOnline)
+  const offline = participants.filter((p) => !p.isOnline)
 
   return (
     <div className="flex flex-col gap-1">
@@ -130,13 +104,19 @@ export default function UserPresence({ ownerId = "u1" }: { ownerId?: string }) {
       </div>
 
       <div className="flex flex-col gap-0.5">
-        {online.map((p) => (
-          <UserRow
-            key={p.userId}
-            participant={p}
-            isOwner={p.userId === ownerId}
-          />
-        ))}
+        {online.length > 0 ? (
+          online.map((p) => (
+            <UserRow
+              key={p.userId}
+              participant={p}
+              isOwner={p.userId === ownerId}
+            />
+          ))
+        ) : (
+          <p className="px-3 py-2 text-xs text-muted-foreground">
+            Waiting for collaborators
+          </p>
+        )}
       </div>
 
       {offline.length > 0 && (

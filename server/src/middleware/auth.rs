@@ -1,6 +1,5 @@
 use axum::{
     extract::{Request, State},
-    http::StatusCode,
     middleware::Next,
     response::Response,
 };
@@ -27,9 +26,9 @@ pub struct Claims {
 /// Handlers pull it out with: Extension(current_user): Extension<CurrentUser>
 #[derive(Debug, Clone)]
 pub struct CurrentUser {
-    pub id:       Uuid,
-    pub username: String,
-    pub email:    String,
+    pub id:           Uuid,
+    pub username:     String,
+    pub avatar_color: String,
 }
 
 /// Generate a signed JWT token for a user.
@@ -99,11 +98,15 @@ pub async fn require_auth(
     let user_id = Uuid::parse_str(&token_data.claims.sub)
         .map_err(|_| AppError::Unauthorized("Invalid user id in token".into()))?;
 
+    let user = crate::db::users::find_by_id(&state.db, user_id)
+        .await?
+        .ok_or_else(|| AppError::Unauthorized("User not found".into()))?;
+
     // inject into request extensions — handlers can extract this
     req.extensions_mut().insert(CurrentUser {
-        id:       user_id,
-        username: token_data.claims.username,
-        email:    token_data.claims.email,
+        id:           user_id,
+        username:     user.username,
+        avatar_color: user.avatar_color,
     });
 
     // pass to next handler

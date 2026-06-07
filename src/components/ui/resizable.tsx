@@ -14,6 +14,7 @@ function ResizablePanelGroup({
       data-slot="resizable-panel-group"
       className={cn(
         "flex h-full w-full aria-[orientation=vertical]:flex-col",
+        "min-h-0 min-w-0 overflow-hidden",
         className
       )}
       {...props}
@@ -22,9 +23,16 @@ function ResizablePanelGroup({
 }
 
 function ResizablePanel({
+  className,
   ...props
 }: React.ComponentProps<typeof ResizablePrimitive.Panel>) {
-  return <ResizablePrimitive.Panel data-slot="resizable-panel" {...props} />
+  return (
+    <ResizablePrimitive.Panel
+      data-slot="resizable-panel"
+      className={cn("min-h-0 min-w-0 overflow-hidden", className)}
+      {...props}
+    />
+  )
 }
 
 function ResizableHandle({
@@ -45,9 +53,7 @@ function ResizableHandle({
     >
       {withHandle && (
         <div className="bg-border z-10 flex h-4 w-3 items-center justify-center rounded-sm border">
-          <div className="flex flex-col gap-0.5">
-            <div className="w-0.5 h-2.5 bg-muted-foreground/50 rounded-full" />
-          </div>
+          <GripVerticalIcon className="h-2.5 w-2.5 text-muted-foreground/70" />
         </div>
       )}
     </ResizablePrimitive.Separator>

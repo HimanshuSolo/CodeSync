@@ -1,4 +1,4 @@
-import type { EditOp, CursorPosition, AiRequest, AiMessage, Participant } from "@/types"
+import type { EditOp, CursorPosition, AiRequest, Participant } from "@/types"
 
 export type ClientMessage =
   | { type: "edit";       payload: EditOp }

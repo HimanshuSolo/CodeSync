@@ -31,12 +31,46 @@ export function useEditor({ send, userId, clientId, language }: UseEditorProps) 
     documentRef.current = document
   }, [document])
 
+  // ── send an AI request ───────────────────────────────
+  const handleAiRequest = useCallback((
+    prompt: string,
+    selectedCode: string,
+    startLine: number,
+    endLine: number
+  ) => {
+    const assistantMsgId = addUserMessage(prompt)
+    startStreaming(assistantMsgId)
+
+    const request: AiRequest = {
+      prompt,
+      selectedCode,
+      language: language as import("@/types").Language,
+      startLine,
+      endLine,
+    }
+
+    send({ type: "ai_request", payload: request })
+  }, [send, language, addUserMessage, startStreaming])
+
   // ── called when Monaco mounts ────────────────────────
   const handleEditorMount = useCallback((
     editor: Monaco.editor.IStandaloneCodeEditor
   ) => {
     editorRef.current = editor
     revisionRef.current = revision
+
+    editor.onDidChangeCursorPosition((event) => {
+      send({
+        type: "cursor",
+        payload: {
+          userId,
+          username: "",
+          avatarColor: "",
+          line: event.position.lineNumber,
+          col:  event.position.column,
+        },
+      })
+    })
 
     // Cmd+K → trigger AI on selected code
     editor.addAction({
@@ -64,7 +98,7 @@ export function useEditor({ send, userId, clientId, language }: UseEditorProps) 
         )
       },
     })
-  }, [revision])
+  }, [handleAiRequest, revision, send, userId])
 
   // ── called on every keystroke ────────────────────────
   const handleChange = useCallback((value: string | undefined) => {
@@ -120,7 +154,7 @@ export function useEditor({ send, userId, clientId, language }: UseEditorProps) 
 
       send({ type: "edit", payload: op })
     }
-  }, [send, userId, setDocument])
+  }, [clientId, send, userId, setDocument])
 
   // ── called on cursor move ────────────────────────────
   const handleCursorChange = useCallback((
@@ -137,27 +171,6 @@ export function useEditor({ send, userId, clientId, language }: UseEditorProps) 
       },
     })
   }, [send, userId])
-
-  // ── send an AI request ───────────────────────────────
-  const handleAiRequest = useCallback((
-    prompt: string,
-    selectedCode: string,
-    startLine: number,
-    endLine: number
-  ) => {
-    const assistantMsgId = addUserMessage(prompt)
-    startStreaming(assistantMsgId)
-
-    const request: AiRequest = {
-      prompt,
-      selectedCode,
-      language: language as import("@/types").Language,
-      startLine,
-      endLine,
-    }
-
-    send({ type: "ai_request", payload: request })
-  }, [send, language, addUserMessage, startStreaming])
 
   // ── apply a remote edit to the editor ───────────────
   // Called when the server broadcasts a resolved EditOp

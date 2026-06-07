@@ -1,14 +1,13 @@
 use axum::{
     extract::{Path, Query, State, WebSocketUpgrade},
     response::Response,
-    Extension,
 };
 use serde::Deserialize;
 use uuid::Uuid;
 use crate::{
     db,
     errors::AppError,
-    middleware::auth::{create_token, Claims, CurrentUser},
+    middleware::auth::{Claims, CurrentUser},
     state::AppState,
     ws::session::SessionActor,
 };
@@ -53,10 +52,14 @@ pub async fn ws_handler(
         db::sessions::add_member(&state.db, session_id, user_id).await?;
     }
 
+    let user = db::users::find_by_id(&state.db, user_id)
+        .await?
+        .ok_or_else(|| AppError::Unauthorized("User not found".into()))?;
+
     let current_user = CurrentUser {
-        id:       user_id,
-        username: token_data.claims.username,
-        email:    token_data.claims.email,
+        id:           user_id,
+        username:     user.username,
+        avatar_color: user.avatar_color,
     };
 
     tracing::info!(

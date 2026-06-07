@@ -17,7 +17,6 @@ pub type SessionRegistry = DashMap<String, SessionHandle>;
 
 #[derive(Clone)]
 pub struct SessionHandle {
-    pub session_id:   String,
     pub tx:           mpsc::Sender<ActorMessage>,
     pub broadcast_tx: broadcast::Sender<ServerMessage>,
 }

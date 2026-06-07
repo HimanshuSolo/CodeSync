@@ -35,7 +35,6 @@ impl SessionActor {
         let (broadcast_tx, _)      = broadcast::channel::<ServerMessage>(256);
 
         let handle = ActorHandle {
-            session_id,
             tx:           tx.clone(),
             broadcast_tx: broadcast_tx.clone(),
         };
@@ -44,7 +43,6 @@ impl SessionActor {
         state.sessions.insert(
             session_id.to_string(),
             SessionHandle {
-                session_id: session_id.to_string(),
                 tx:           tx.clone(),
                 broadcast_tx: broadcast_tx.clone(),
             },
@@ -75,7 +73,7 @@ impl SessionActor {
         let _ = handle.tx.send(ActorMessage::UserJoined {
             user_id:      current_user.id,
             username:     current_user.username.clone(),
-            avatar_color: "#7c3aed".to_string(),
+            avatar_color: current_user.avatar_color.clone(),
         }).await;
 
         // ── connection loop ───────────────────────────────
@@ -136,7 +134,6 @@ impl SessionActor {
 /// Cheap-to-clone handle — wraps the channel senders.
 #[derive(Clone)]
 pub struct ActorHandle {
-    pub session_id:   Uuid,
     pub tx:           mpsc::Sender<ActorMessage>,
     pub broadcast_tx: broadcast::Sender<ServerMessage>,
 }
@@ -150,7 +147,6 @@ impl ActorHandle {
 impl From<SessionHandle> for ActorHandle {
     fn from(h: SessionHandle) -> Self {
         Self {
-            session_id:   Uuid::parse_str(&h.session_id).unwrap(),
             tx:           h.tx,
             broadcast_tx: h.broadcast_tx,
         }
@@ -277,15 +273,20 @@ async fn run_actor(
 }
 
                     ClientMessage::Cursor(pos) => {
+                        let mut cursor = pos;
+                        cursor.user_id = user_id.to_string();
+
                         // update participant cursor in memory
                         if let Some(p) = participants.iter_mut()
                             .find(|p| p.user_id == user_id.to_string())
                         {
-                            p.cursor_line = pos.line;
-                            p.cursor_col  = pos.col;
+                            p.cursor_line = cursor.line;
+                            p.cursor_col  = cursor.col;
+                            cursor.username = p.username.clone();
+                            cursor.avatar_color = p.avatar_color.clone();
                         }
                         // broadcast cursor to everyone
-                        let _ = broadcast_tx.send(ServerMessage::Cursor(pos));
+                        let _ = broadcast_tx.send(ServerMessage::Cursor(cursor));
                     }
 
                     ClientMessage::AiRequest(req) => {
