@@ -4,6 +4,7 @@ use sqlx::FromRow;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+#[serde(rename_all = "camelCase")]
 pub struct Session {
     pub id:         Uuid,
     pub name:       String,
@@ -23,6 +24,7 @@ pub struct CreateSession {
 
 /// List view — no document content (too large to send in lists)
 #[derive(Debug, Serialize, FromRow)]
+#[serde(rename_all = "camelCase")]
 pub struct SessionSummary {
     pub id:         Uuid,
     pub name:       String,
