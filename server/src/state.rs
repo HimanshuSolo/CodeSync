@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use dashmap::DashMap;
 use sqlx::PgPool;
-use tokio::sync::{broadcast, mpsc};
+use tokio::sync::{broadcast, mpsc, Semaphore};
 use crate::config::Config;
 use crate::ws::messages::ServerMessage;
 use crate::ws::session::ActorMessage;
@@ -11,6 +11,7 @@ pub struct AppState {
     pub db:       PgPool,
     pub config:   Config,
     pub sessions: Arc<SessionRegistry>,
+    pub runner_slots: Arc<Semaphore>,
 }
 
 pub type SessionRegistry = DashMap<String, SessionHandle>;
@@ -27,6 +28,7 @@ impl AppState {
             db,
             config,
             sessions: Arc::new(DashMap::new()),
+            runner_slots: Arc::new(Semaphore::new(4)),
         }
     }
 }
