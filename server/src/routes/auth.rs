@@ -171,7 +171,7 @@ fn pick_avatar_color(username: &str) -> String {
         "#d97706", // amber
         "#dc2626", // red
         "#7c3aed", // purple
-        "#db2777", // pink
+        "#db2777", 
         "#2563eb", // blue
     ];
     let index = username
@@ -181,3 +181,4 @@ fn pick_avatar_color(username: &str) -> String {
 
     colors[index].to_string()
 }// Phase 8 — JWT auth endpoints
+	
