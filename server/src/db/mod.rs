@@ -23,22 +23,16 @@ pub mod users {
     use crate::errors::AppResult;
 
     pub async fn find_by_email(pool: &PgPool, email: &str) -> AppResult<Option<User>> {
-        let user = sqlx::query_as!(
-            User,
-            "SELECT * FROM users WHERE email = $1",
-            email
-        )
+        let user = sqlx::query_as::<_, User>("SELECT * FROM users WHERE email = $1")
+        .bind(email)
         .fetch_optional(pool)
         .await?;
         Ok(user)
     }
 
     pub async fn find_by_id(pool: &PgPool, id: Uuid) -> AppResult<Option<User>> {
-        let user = sqlx::query_as!(
-            User,
-            "SELECT * FROM users WHERE id = $1",
-            id
-        )
+        let user = sqlx::query_as::<_, User>("SELECT * FROM users WHERE id = $1")
+        .bind(id)
         .fetch_optional(pool)
         .await?;
         Ok(user)
@@ -51,41 +45,40 @@ pub mod users {
         password_hash: &str,
         avatar_color:  &str,
     ) -> AppResult<User> {
-        let user = sqlx::query_as!(
-            User,
+        let user = sqlx::query_as::<_, User>(
             r#"
             INSERT INTO users (email, username, password_hash, avatar_color)
             VALUES ($1, $2, $3, $4)
             RETURNING *
-            "#,
-            email,
-            username,
-            password_hash,
-            avatar_color
+            "#
         )
+        .bind(email)
+        .bind(username)
+        .bind(password_hash)
+        .bind(avatar_color)
         .fetch_one(pool)
         .await?;
         Ok(user)
     }
 
     pub async fn email_exists(pool: &PgPool, email: &str) -> AppResult<bool> {
-        let row = sqlx::query!(
-            "SELECT EXISTS(SELECT 1 FROM users WHERE email = $1) as exists",
-            email
+        let exists = sqlx::query_scalar::<_, bool>(
+            "SELECT EXISTS(SELECT 1 FROM users WHERE email = $1)"
         )
+        .bind(email)
         .fetch_one(pool)
         .await?;
-        Ok(row.exists.unwrap_or(false))
+        Ok(exists)
     }
 
     pub async fn username_exists(pool: &PgPool, username: &str) -> AppResult<bool> {
-        let row = sqlx::query!(
-            "SELECT EXISTS(SELECT 1 FROM users WHERE username = $1) as exists",
-            username
+        let exists = sqlx::query_scalar::<_, bool>(
+            "SELECT EXISTS(SELECT 1 FROM users WHERE username = $1)"
         )
+        .bind(username)
         .fetch_one(pool)
         .await?;
-        Ok(row.exists.unwrap_or(false))
+        Ok(exists)
     }
 }
 
@@ -97,8 +90,7 @@ pub mod sessions {
     use crate::errors::AppResult;
 
     pub async fn list_for_user(pool: &PgPool, user_id: Uuid) -> AppResult<Vec<SessionSummary>> {
-        let sessions = sqlx::query_as!(
-            SessionSummary,
+        let sessions = sqlx::query_as::<_, SessionSummary>(
             r#"
             SELECT DISTINCT
                 s.id, s.name, s.language, s.revision,
@@ -107,20 +99,17 @@ pub mod sessions {
             LEFT JOIN session_members sm ON sm.session_id = s.id
             WHERE s.owner_id = $1 OR sm.user_id = $1
             ORDER BY s.updated_at DESC
-            "#,
-            user_id
+            "#
         )
+        .bind(user_id)
         .fetch_all(pool)
         .await?;
         Ok(sessions)
     }
 
     pub async fn find_by_id(pool: &PgPool, id: Uuid) -> AppResult<Option<Session>> {
-        let session = sqlx::query_as!(
-            Session,
-            "SELECT * FROM sessions WHERE id = $1",
-            id
-        )
+        let session = sqlx::query_as::<_, Session>("SELECT * FROM sessions WHERE id = $1")
+        .bind(id)
         .fetch_optional(pool)
         .await?;
         Ok(session)
@@ -132,26 +121,23 @@ pub mod sessions {
         language: &str,
         owner_id: Uuid,
     ) -> AppResult<Session> {
-        let session = sqlx::query_as!(
-            Session,
+        let session = sqlx::query_as::<_, Session>(
             r#"
             INSERT INTO sessions (name, language, owner_id)
             VALUES ($1, $2, $3)
             RETURNING *
-            "#,
-            name,
-            language,
-            owner_id
+            "#
         )
+        .bind(name)
+        .bind(language)
+        .bind(owner_id)
         .fetch_one(pool)
         .await?;
 
         // add owner as first member
-        sqlx::query!(
-            "INSERT INTO session_members (session_id, user_id) VALUES ($1, $2)",
-            session.id,
-            owner_id
-        )
+        sqlx::query("INSERT INTO session_members (session_id, user_id) VALUES ($1, $2)")
+        .bind(session.id)
+        .bind(owner_id)
         .execute(pool)
         .await?;
 
@@ -164,27 +150,25 @@ pub mod sessions {
         document:   &str,
         revision:   i64,
     ) -> AppResult<()> {
-        sqlx::query!(
+        sqlx::query(
             r#"
             UPDATE sessions
             SET document = $1, revision = $2, updated_at = NOW()
             WHERE id = $3
-            "#,
-            document,
-            revision,
-            session_id
+            "#
         )
+        .bind(document)
+        .bind(revision)
+        .bind(session_id)
         .execute(pool)
         .await?;
         Ok(())
     }
 
     pub async fn delete(pool: &PgPool, id: Uuid, owner_id: Uuid) -> AppResult<bool> {
-        let result = sqlx::query!(
-            "DELETE FROM sessions WHERE id = $1 AND owner_id = $2",
-            id,
-            owner_id
-        )
+        let result = sqlx::query("DELETE FROM sessions WHERE id = $1 AND owner_id = $2")
+        .bind(id)
+        .bind(owner_id)
         .execute(pool)
         .await?;
         Ok(result.rows_affected() > 0)
@@ -197,20 +181,20 @@ pub mod sessions {
         session_id: Uuid,
         user_id:    Uuid,
     ) -> AppResult<bool> {
-        let row = sqlx::query!(
+        let exists = sqlx::query_scalar::<_, bool>(
             r#"
             SELECT EXISTS(
                 SELECT 1 FROM session_members
                 WHERE session_id = $1 AND user_id = $2
-            ) as exists
-            "#,
-            session_id,
-            user_id
+            )
+            "#
         )
+        .bind(session_id)
+        .bind(user_id)
         .fetch_one(pool)
         .await?;
 
-        Ok(row.exists.unwrap_or(false))
+        Ok(exists)
     }
 
     pub async fn add_member(
@@ -218,15 +202,15 @@ pub mod sessions {
         session_id: Uuid,
         user_id:    Uuid,
     ) -> AppResult<()> {
-        sqlx::query!(
+        sqlx::query(
             r#"
             INSERT INTO session_members (session_id, user_id)
             VALUES ($1, $2)
             ON CONFLICT DO NOTHING
-            "#,
-            session_id,
-            user_id
+            "#
         )
+        .bind(session_id)
+        .bind(user_id)
         .execute(pool)
         .await?;
         Ok(())
