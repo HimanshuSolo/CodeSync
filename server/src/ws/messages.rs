@@ -9,12 +9,18 @@ pub enum ClientMessage {
     Edit(EditOp),
     Cursor(CursorPosition),
     AiRequest(AiRequest),
+    OpenFile(OpenFileRequest),
     Ping,
 }
 
 /// Messages the SERVER sends to the client.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "type", content = "payload", rename_all = "snake_case")]
+#[serde(
+    tag = "type",
+    content = "payload",
+    rename_all = "snake_case",
+    rename_all_fields = "camelCase"
+)]
 pub enum ServerMessage {
     Edit(EditOp),
     Cursor(CursorPosition),
@@ -24,9 +30,11 @@ pub enum ServerMessage {
     UserLeft   { user_id: String },
     SessionState {
         document:     String,
+        active_file:  Option<String>,
         participants: Vec<Participant>,
         revision:     u64,
     },
+    SessionDeleted { message: String },
     Error { message: String },
     Pong,
 }
@@ -79,6 +87,7 @@ pub struct Participant {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AiRequest {
+    pub request_id:    String,
     pub prompt:        String,
     pub selected_code: String,
     pub language:      String,
@@ -86,3 +95,9 @@ pub struct AiRequest {
     pub end_line:      u32,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OpenFileRequest {
+    pub path: String,
+    pub document: String,
+}
