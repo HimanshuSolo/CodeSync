@@ -19,7 +19,7 @@ mod ws;
 
 use config::Config;
 use crate::middleware as mw;
-use routes::{auth, compile, health, sessions};
+use routes::{auth, compile, health, repositories, sessions};
 use state::AppState;
 
 #[tokio::main]
@@ -72,7 +72,13 @@ async fn main() {
         .route("/sessions",             post(sessions::create_session))
         .route("/sessions/:id",         get(sessions::get_session))
         .route("/sessions/:id",         delete(sessions::delete_session))
-        .route("/compile/rust",         post(compile::compile_rust))
+        .route("/sessions/:id/repository", post(repositories::import_repository))
+        .route("/sessions/:id/repository/tree", get(repositories::repository_tree))
+        .route("/sessions/:id/repository/file", get(repositories::read_file).put(repositories::write_file))
+        .route("/sessions/:id/repository/status", get(repositories::git_status))
+        .route("/sessions/:id/repository/commit", post(repositories::git_commit))
+        .route("/sessions/:id/repository/push", post(repositories::git_push))
+        .route("/run",                  post(compile::run_code))
         .layer(axum_middleware::from_fn_with_state(
             state.clone(),
             mw::auth::require_auth,
