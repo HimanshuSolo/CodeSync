@@ -5,7 +5,8 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import {
   Code2, Users, Clock,
-  ChevronRight, Zap, Search, LogOut,
+  CalendarDays, ChevronRight, CircleUserRound, FolderOpen,
+  Search, LogOut, Trash2, Loader2,
 } from "lucide-react"
 import { Button }                from "@/components/ui/button"
 import { Input }                 from "@/components/ui/input"
@@ -40,16 +41,24 @@ function timeAgo(iso: string): string {
   return `${d}d ago`
 }
 
-function SessionCard({ session }: { session: Session }) {
+function SessionCard({
+  session,
+  deleting,
+  onDelete,
+}: {
+  session: Session
+  deleting: boolean
+  onDelete: (session: Session) => void
+}) {
   return (
-    <Link href={`/session/${session.id}`}>
-      <Card className="border-border bg-card hover:border-violet-800 hover:bg-card/80 transition-all duration-200 cursor-pointer group">
+    <Card className="relative border-border bg-card hover:border-violet-800 hover:bg-card/80 transition-all duration-200 group">
+      <Link href={`/session/${session.id}`} className="block">
         <CardHeader className="pb-3 pt-4 px-4">
           <div className="flex items-start justify-between gap-2">
-            <h3 className="font-semibold text-sm leading-tight group-hover:text-violet-300 transition-colors line-clamp-1">
+            <h3 className="pr-8 font-semibold text-sm leading-tight group-hover:text-violet-300 transition-colors line-clamp-1">
               {session.name}
             </h3>
-            <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-violet-400 flex-shrink-0 transition-colors" />
+            <ChevronRight className="mr-8 w-4 h-4 text-muted-foreground group-hover:text-violet-400 flex-shrink-0 transition-colors" />
           </div>
         </CardHeader>
         <CardContent className="px-4 pb-4 space-y-3">
@@ -71,8 +80,19 @@ function SessionCard({ session }: { session: Session }) {
             </div>
           </div>
         </CardContent>
-      </Card>
-    </Link>
+      </Link>
+      <Button
+        variant="ghost"
+        size="icon"
+        className="absolute right-2 top-2 z-10 h-8 w-8 text-red-400 hover:bg-red-950 hover:text-red-300"
+        disabled={deleting}
+        onClick={() => onDelete(session)}
+        aria-label={`Delete ${session.name}`}
+        title="Delete session"
+      >
+        {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+      </Button>
+    </Card>
   )
 }
 
@@ -101,6 +121,7 @@ export default function DashboardPage() {
   const [search, setSearch] = useState("")
   const [loading, setLoading] = useState(true)
   const [error, setError]   = useState("")
+  const [deletingId, setDeletingId] = useState<string | null>(null)
   const [now] = useState(() => Date.now())
 
   // redirect to login if not authenticated
@@ -129,6 +150,25 @@ export default function DashboardPage() {
     sessionApi.list()
       .then((res) => setSessions(res.sessions))
       .catch(console.error)
+  }
+
+  async function handleDeleteSession(session: Session) {
+    const confirmed = window.confirm(
+      `Delete "${session.name}"?\n\nThis permanently removes its document history, live session memory, and imported repository workspace.`,
+    )
+    if (!confirmed) return
+
+    setDeletingId(session.id)
+    setError("")
+    try {
+      await sessionApi.delete(session.id)
+      setSessions(sessions.filter((item) => item.id !== session.id))
+      localStorage.removeItem(`codesync_ai_chat:${session.id}`)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to delete session")
+    } finally {
+      setDeletingId(null)
+    }
   }
 
   const filtered = sessions.filter((s) =>
@@ -190,8 +230,8 @@ export default function DashboardPage() {
         <div className="grid grid-cols-3 gap-4 mb-8">
           <Card className="border-border bg-card">
             <CardContent className="p-4 flex items-center gap-3">
-              <div className="w-9 h-9 rounded-lg bg-violet-950 text-violet-400 flex items-center justify-center">
-                <Code2 className="w-4 h-4" />
+              <div className="flex h-9 w-9 items-center justify-center rounded-md border border-border bg-muted/40 text-muted-foreground">
+                <FolderOpen className="w-4 h-4" />
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Total sessions</p>
@@ -201,8 +241,8 @@ export default function DashboardPage() {
           </Card>
           <Card className="border-border bg-card">
             <CardContent className="p-4 flex items-center gap-3">
-              <div className="w-9 h-9 rounded-lg bg-green-950 text-green-400 flex items-center justify-center">
-                <Zap className="w-4 h-4" />
+              <div className="flex h-9 w-9 items-center justify-center rounded-md border border-border bg-muted/40 text-muted-foreground">
+                <CalendarDays className="w-4 h-4" />
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Active today</p>
@@ -216,8 +256,8 @@ export default function DashboardPage() {
           </Card>
           <Card className="border-border bg-card">
             <CardContent className="p-4 flex items-center gap-3">
-              <div className="w-9 h-9 rounded-lg bg-blue-950 text-blue-400 flex items-center justify-center">
-                <Users className="w-4 h-4" />
+              <div className="flex h-9 w-9 items-center justify-center rounded-md border border-border bg-muted/40 text-muted-foreground">
+                <CircleUserRound className="w-4 h-4" />
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Your account</p>
@@ -254,7 +294,14 @@ export default function DashboardPage() {
           </div>
         ) : filtered.length > 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filtered.map((s) => <SessionCard key={s.id} session={s} />)}
+            {filtered.map((s) => (
+              <SessionCard
+                key={s.id}
+                session={s}
+                deleting={deletingId === s.id}
+                onDelete={handleDeleteSession}
+              />
+            ))}
           </div>
         ) : (
           <div className="text-center py-16 text-muted-foreground">
