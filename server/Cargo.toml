@@ -21,6 +21,7 @@ tower-http = { version = "0.5", features = ["cors", "trace"] }
 # ── serialisation ──────────────────────────────────────
 serde       = { version = "1", features = ["derive"] }
 serde_json  = { version = "1" }
+base64      = { version = "0.22" }
 
 # ── database ───────────────────────────────────────────
 sqlx = { version = "0.7", features = [
