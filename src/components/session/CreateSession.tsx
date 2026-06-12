@@ -24,15 +24,15 @@ import {
 import type { Language } from "@/types"
 import { sessionApi } from "@/lib/api"
 
-const LANGUAGES: { value: Language; label: string; color: string }[] = [
-  { value: "rust", label: "Rust", color: "text-orange-400" },
-  { value: "typescript", label: "TypeScript", color: "text-blue-400" },
-  { value: "javascript", label: "JavaScript", color: "text-yellow-400" },
-  { value: "python", label: "Python", color: "text-green-400" },
-  { value: "go", label: "Go", color: "text-cyan-400" },
-  { value: "cpp", label: "C++", color: "text-purple-400" },
-  { value: "java", label: "Java", color: "text-red-400" },
-  { value: "markdown", label: "Markdown", color: "text-zinc-400" },
+const LANGUAGES: { value: Language; label: string }[] = [
+  { value: "rust", label: "Rust" },
+  { value: "typescript", label: "TypeScript" },
+  { value: "javascript", label: "JavaScript" },
+  { value: "python", label: "Python" },
+  { value: "go", label: "Go" },
+  { value: "cpp", label: "C++" },
+  { value: "java", label: "Java" },
+  { value: "markdown", label: "Markdown" },
 ]
 
 interface CreateSessionProps {
@@ -88,13 +88,13 @@ export default function CreateSession({ onCreated }: CreateSessionProps) {
         </Button>
       </DialogTrigger>
 
-      <DialogContent className="sm:max-w-md bg-card border-border">
+      <DialogContent className="sm:max-w-lg bg-card">
         <DialogHeader>
           <div className="flex items-center gap-2 mb-1">
             <div className="w-7 h-7 rounded-md bg-violet-600 flex items-center justify-center">
               <Code2 className="w-4 h-4 text-white" />
             </div>
-            <DialogTitle className="text-lg font-bold">
+            <DialogTitle className="text-lg font-bold text-foreground">
               New Session
             </DialogTitle>
           </div>
@@ -112,7 +112,7 @@ export default function CreateSession({ onCreated }: CreateSessionProps) {
           )}
 
           <div className="space-y-2">
-            <Label htmlFor="session-name">Session name</Label>
+            <Label htmlFor="session-name" className="text-foreground">Session name</Label>
             <Input
               id="session-name"
               placeholder="e.g. Auth Service Refactor"
@@ -120,29 +120,33 @@ export default function CreateSession({ onCreated }: CreateSessionProps) {
               onChange={(e) => setName(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleCreate()}
               disabled={loading}
-              className="bg-background"
+              className="h-10 bg-background border-border text-foreground"
               autoFocus
             />
           </div>
 
           <div className="space-y-2">
-            <Label>Language</Label>
+            <Label className="text-foreground">Language</Label>
             <Select
               value={language}
               onValueChange={(v) => setLanguage(v as Language)}
               disabled={loading}
             >
-              <SelectTrigger className="bg-background">
+              <SelectTrigger className="h-10 w-full bg-background border-border text-foreground">
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent className="bg-card border-border">
+              <SelectContent
+                position="popper"
+                align="start"
+                className="bg-popover border-border shadow-xl"
+              >
                 {LANGUAGES.map((lang) => (
                   <SelectItem
                     key={lang.value}
                     value={lang.value}
-                    className="cursor-pointer"
+                    className="cursor-pointer py-2.5 focus:bg-violet-500/15"
                   >
-                    <span className={`font-mono text-sm ${lang.color}`}>
+                    <span className="font-mono text-sm font-medium text-foreground">
                       {lang.label}
                     </span>
                   </SelectItem>
@@ -151,8 +155,8 @@ export default function CreateSession({ onCreated }: CreateSessionProps) {
             </Select>
           </div>
 
-          <div className="bg-muted/40 border border-border rounded-lg p-3 space-y-1.5">
-            <p className="text-xs font-medium text-muted-foreground">
+          <div className="bg-muted/50 border border-border rounded-lg p-3.5 space-y-2">
+            <p className="text-xs font-semibold text-foreground">
               What happens next
             </p>
             {[
@@ -162,7 +166,7 @@ export default function CreateSession({ onCreated }: CreateSessionProps) {
             ].map((item) => (
               <div key={item} className="flex items-center gap-2">
                 <span className="w-1 h-1 rounded-full bg-violet-400 flex-shrink-0" />
-                <span className="text-xs text-muted-foreground">{item}</span>
+                <span className="text-xs text-foreground/80">{item}</span>
               </div>
             ))}
           </div>
