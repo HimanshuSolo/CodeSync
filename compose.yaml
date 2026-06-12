@@ -1,0 +1,84 @@
+name: codesync
+
+services:
+  database:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: codesync
+      POSTGRES_USER: codesync
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U codesync -d codesync"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  runner-images:
+    image: docker:29-cli
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    command:
+      - sh
+      - -ec
+      - |
+        docker pull python:3.13-alpine
+        docker pull node:22-alpine
+        docker pull denoland/deno:alpine
+        docker pull rust:1.85-alpine
+        docker pull golang:1.24-alpine
+        docker pull gcc:14
+        docker pull eclipse-temurin:21-jdk-alpine
+    restart: "no"
+
+  backend:
+    build:
+      context: ./server
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgres://codesync:${POSTGRES_PASSWORD}@database:5432/codesync
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      GROQ_API_KEY: ${GROQ_API_KEY:?Set GROQ_API_KEY in .env}
+      HOST: 0.0.0.0
+      PORT: 8080
+      WORKSPACE_ROOT: /app/workspaces
+      RUNNER_WORKSPACE_ROOT: /runner-workspaces
+      RUNNER_VOLUME_NAME: codesync_runner_workspaces
+      RUST_LOG: codesync_server=info,tower_http=info
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - repository_workspaces:/app/workspaces
+      - runner_workspaces:/runner-workspaces
+    ports:
+      - "${BACKEND_PORT:-8080}:8080"
+    depends_on:
+      database:
+        condition: service_healthy
+      runner-images:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  frontend:
+    build:
+      context: .
+      args:
+        NEXT_PUBLIC_API_URL: ${PUBLIC_API_URL:-http://localhost:8080}
+        NEXT_PUBLIC_WS_URL: ${PUBLIC_WS_URL:-ws://localhost:8080}
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  repository_workspaces:
+  runner_workspaces:
+    name: codesync_runner_workspaces
