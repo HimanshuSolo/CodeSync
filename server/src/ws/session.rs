@@ -159,6 +159,7 @@ pub enum ActorMessage {
     ClientMsg { user_id: Uuid, msg: ClientMessage },
     UserJoined { user_id: Uuid, username: String, avatar_color: String },
     UserLeft  { user_id: Uuid },
+    Shutdown,
 }
 
 // ── actor loop ────────────────────────────────────────────────────────────────
@@ -176,6 +177,7 @@ async fn run_actor(
 ) {
     let mut doc      = document;
     let mut rev      = revision;
+    let mut active_file: Option<String> = None;
     let mut participants: Vec<Participant> = Vec::new();
     let mut history: Vec<EditOp> = Vec::new();
 
@@ -187,6 +189,7 @@ async fn run_actor(
                 // send current document state to the new user
                 let state_msg = ServerMessage::SessionState {
                     document:     doc.clone(),
+                    active_file:  active_file.clone(),
                     participants: participants.clone(),
                     revision:     rev as u64,
                 };
@@ -215,6 +218,13 @@ async fn run_actor(
                 let _ = broadcast_tx.send(ServerMessage::UserLeft {
                     user_id: user_id.to_string(),
                 });
+            }
+
+            ActorMessage::Shutdown => {
+                let _ = broadcast_tx.send(ServerMessage::SessionDeleted {
+                    message: "This session was deleted by its owner".into(),
+                });
+                break;
             }
 
             // ── incoming client message ───────────────────
@@ -297,7 +307,7 @@ async fn run_actor(
 
     let api_key      = groq_api_key.clone();
     let broadcast_tx2 = broadcast_tx.clone();
-    let message_id   = uuid::Uuid::new_v4().to_string();
+    let message_id   = req.request_id.clone();
     let prompt       = req.prompt.clone();
     let code         = req.selected_code.clone();
     let lang         = req.language.clone();
@@ -314,6 +324,26 @@ async fn run_actor(
         ).await;
     });
 }
+
+                    ClientMessage::OpenFile(req) => {
+                        doc = req.document;
+                        active_file = Some(req.path);
+                        rev = 0;
+                        history.clear();
+
+                        if let Err(e) = db::sessions::update_document(
+                            &db, session_id, &doc, rev
+                        ).await {
+                            tracing::error!("Failed to persist opened file: {e}");
+                        }
+
+                        let _ = broadcast_tx.send(ServerMessage::SessionState {
+                            document: doc.clone(),
+                            active_file: active_file.clone(),
+                            participants: participants.clone(),
+                            revision: rev as u64,
+                        });
+                    }
 
                     ClientMessage::Ping => {
                         let _ = broadcast_tx.send(ServerMessage::Pong);
