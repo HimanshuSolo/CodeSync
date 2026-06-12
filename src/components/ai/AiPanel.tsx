@@ -8,43 +8,69 @@ import { Separator } from "@/components/ui/separator"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import AiMessage from "@/components/ai/AiMessage"
 import { useAiStore } from "@/store/aiStore"
-import type { AiMessage as AiMessageType } from "@/types"
+import type { CodeSelection } from "@/types"
+interface AiPanelProps {
+  sessionId: string
+  onSend: (prompt: string) => void
+  selection: CodeSelection | null
+}
 
-const MOCK_MESSAGES: AiMessageType[] = [
-  {
-    id: "1",
-    role: "user",
-    content: "Can you explain what this function does?",
-    isStreaming: false,
-    timestamp: "2026-05-26T09:35:00.000Z",
-  },
-  {
-    id: "2",
-    role: "assistant",
-    content: "Sure! This function implements a token bucket rate limiter.\n\nHere's how it works:\n\n1. A bucket holds a maximum of N tokens\n2. Tokens are added at a fixed rate\n3. Each request consumes one token\n4. If the bucket is empty, the request is rejected\n\nThis is exactly the pattern used in your Axum middleware.",
-    isStreaming: false,
-    timestamp: "2026-05-26T09:37:00.000Z",
-  },
-]
-export default function AiPanel() {
+const CHAT_STORAGE_PREFIX = "codesync_ai_chat:"
+
+export default function AiPanel({ sessionId, onSend, selection }: AiPanelProps) {
   const [input, setInput] = useState("")
+  const [hydrated, setHydrated] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const { messages, isStreaming, clearMessages } = useAiStore()
+  const shouldAutoScrollRef = useRef(true)
+  const { messages, isStreaming, loadMessages, clearMessages } = useAiStore()
 
-  const displayMessages = messages.length > 0 ? messages : MOCK_MESSAGES
+  const displayMessages = messages
 
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
-    }
-  }, [displayMessages])
+    const timeout = setTimeout(() => {
+      try {
+        const stored = localStorage.getItem(`${CHAT_STORAGE_PREFIX}${sessionId}`)
+        loadMessages(stored ? JSON.parse(stored) : [])
+      } catch {
+        loadMessages([])
+      } finally {
+        setHydrated(true)
+      }
+    }, 0)
+    return () => clearTimeout(timeout)
+  }, [loadMessages, sessionId])
 
-  // auto resize textarea
-  function handleInput(e: React.ChangeEvent<HTMLTextAreaElement>) {
-    setInput(e.target.value)
-    e.target.style.height = "auto"
-    e.target.style.height = Math.min(e.target.scrollHeight, 120) + "px"
+  useEffect(() => {
+    if (!hydrated) return
+    const timeout = setTimeout(() => {
+      try {
+        localStorage.setItem(`${CHAT_STORAGE_PREFIX}${sessionId}`, JSON.stringify(messages))
+      } catch {
+        // Browser storage can be unavailable or full; chat remains usable in memory.
+      }
+    }, 250)
+    return () => clearTimeout(timeout)
+  }, [hydrated, messages, sessionId])
+
+  useEffect(() => {
+    const viewport = scrollRef.current
+    if (!viewport || !shouldAutoScrollRef.current) return
+
+    const frame = requestAnimationFrame(() => {
+      viewport.scrollTo({ top: viewport.scrollHeight, behavior: isStreaming ? "auto" : "smooth" })
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [displayMessages, isStreaming])
+
+  function handleClear() {
+    clearMessages()
+    localStorage.removeItem(`${CHAT_STORAGE_PREFIX}${sessionId}`)
+  }
+
+  function handleScroll(e: React.UIEvent<HTMLDivElement>) {
+    const viewport = e.currentTarget
+    const distanceFromBottom = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight
+    shouldAutoScrollRef.current = distanceFromBottom < 80
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
@@ -56,24 +82,22 @@ export default function AiPanel() {
 
   function handleSend() {
     if (!input.trim() || isStreaming) return
-    console.log("AI request:", input)
+    shouldAutoScrollRef.current = true
+    onSend(input.trim())
     setInput("")
-    if (textareaRef.current) {
-      textareaRef.current.style.height = "auto"
-    }
   }
 
   return (
-    <div className="flex flex-col h-full bg-background">
+    <div className="flex h-full min-h-0 min-w-0 flex-col bg-background">
 
       {/* header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-border flex-shrink-0">
-        <div className="flex items-center gap-2">
+      <div className="flex flex-shrink-0 items-center justify-between gap-2 border-b border-border px-3 py-3 sm:px-4">
+        <div className="flex min-w-0 items-center gap-2">
           <div className="w-6 h-6 rounded-md bg-violet-950 border border-violet-800 flex items-center justify-center">
             <Sparkles className="w-3.5 h-3.5 text-violet-400" />
           </div>
-          <span className="text-sm font-semibold">AI Assistant</span>
-          <span className="text-xs text-muted-foreground font-mono bg-muted px-1.5 py-0.5 rounded">
+          <span className="truncate text-sm font-semibold">AI Assistant</span>
+          <span className="hidden flex-shrink-0 rounded bg-muted px-1.5 py-0.5 font-mono text-xs text-muted-foreground min-[360px]:inline-flex">
             llama-3.3-70b
           </span>
         </div>
@@ -83,7 +107,7 @@ export default function AiPanel() {
               variant="ghost"
               size="icon"
               className="w-7 h-7 text-muted-foreground hover:text-foreground"
-              onClick={clearMessages}
+              onClick={handleClear}
             >
               <Trash2 className="w-3.5 h-3.5" />
             </Button>
@@ -94,7 +118,12 @@ export default function AiPanel() {
         </Tooltip>
       </div>
 
-      <ScrollArea className="flex-1 px-4 py-4" ref={scrollRef}>
+      <ScrollArea
+        className="min-h-0 flex-1"
+        viewportRef={scrollRef}
+        onScrollCapture={handleScroll}
+      >
+        <div className="px-4 py-4">
         {displayMessages.length === 0 ? (
           // empty state
           <div className="flex flex-col items-center justify-center h-full gap-3 py-12 text-center">
@@ -130,29 +159,42 @@ export default function AiPanel() {
             ))}
           </div>
         )}
+        </div>
       </ScrollArea>
 
       <Separator className="bg-border/50" />
 
-      <div className="px-4 pt-2 flex-shrink-0">
-        <div className="flex items-center gap-1.5 text-xs text-muted-foreground bg-muted/40 rounded-md px-2.5 py-1.5 border border-border/50">
+      <div className="flex-shrink-0 px-3 pt-2 sm:px-4">
+        <div
+          className={`flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs ${
+            selection
+              ? "border-violet-800/70 bg-violet-950/30 text-violet-300"
+              : "border-border/50 bg-muted/40 text-muted-foreground"
+          }`}
+          title={selection?.code}
+        >
           <Code className="w-3 h-3 flex-shrink-0" />
-          <span className="truncate font-mono">No code selected — select lines in the editor</span>
+          <span className="truncate font-mono">
+            {selection
+              ? `${selection.startLine === selection.endLine ? "Line" : "Lines"} ${selection.startLine}${
+                  selection.startLine === selection.endLine ? "" : `-${selection.endLine}`
+                } selected · ${selection.code.length} characters`
+              : "No code selected — select lines in the editor"}
+          </span>
         </div>
       </div>
 
-      <div className="p-4 flex-shrink-0">
-        <div className="flex gap-2 items-end">
-          <div className="flex-1 relative">
+      <div className="flex-shrink-0 p-3 sm:p-4">
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-2">
+          <div className="relative min-w-0">
             <textarea
-              ref={textareaRef}
               value={input}
-              onChange={handleInput}
+              onChange={(event) => setInput(event.target.value)}
               onKeyDown={handleKeyDown}
               placeholder="Ask about the code... (Enter to send, Shift+Enter for newline)"
-              rows={1}
+              rows={3}
               disabled={isStreaming}
-              className="w-full resize-none bg-muted border border-border rounded-xl px-3 py-2.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-violet-600 focus:border-violet-600 transition-all disabled:opacity-50 min-h-[40px]"
+              className="block max-h-[min(35vh,240px)] min-h-16 w-full resize-y overflow-y-auto rounded-xl border border-border bg-muted px-3 py-2.5 text-sm leading-5 placeholder:text-muted-foreground focus:border-violet-600 focus:outline-none focus:ring-1 focus:ring-violet-600 disabled:opacity-50"
             />
           </div>
           <Button
