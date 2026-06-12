@@ -1,0 +1,4 @@
+target
+workspaces
+.env
+*.log
