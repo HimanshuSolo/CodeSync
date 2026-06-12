@@ -16,16 +16,19 @@ export function useWebSocket(
   token: string | null,
   ready: boolean = false,
   onRemoteEdit?: (op: EditOp) => void,
+  onSessionDeleted?: (message: string) => void,
 ) {
   const wsRef = useRef<WebSocket | null>(null);
   const connectRef = useRef<() => void>(() => {});
   const reconnectRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reconnectAttempts = useRef(0);
+  const shouldReconnectRef = useRef(false);
   const [status, setStatus] = useState<WsStatus>("disconnected");
 
   // store actions
   const {
     setDocument,
+    setActiveFile,
     setRevision,
     setParticipants,
     updateCursor,
@@ -49,6 +52,7 @@ export function useWebSocket(
           }
 
           setDocument(msg.payload.document);
+          setActiveFile(msg.payload.activeFile);
           setRevision(msg.payload.revision);
           setParticipants(msg.payload.participants);
           break;
@@ -83,6 +87,17 @@ export function useWebSocket(
           removeParticipant(msg.payload.userId);
           break;
 
+        case "session_deleted":
+          shouldReconnectRef.current = false;
+          if (reconnectRef.current) {
+            clearTimeout(reconnectRef.current);
+            reconnectRef.current = null;
+          }
+          setStatus("disconnected");
+          wsRef.current?.close();
+          onSessionDeleted?.(msg.payload.message);
+          break;
+
         case "error":
           console.error("[WS] Server error:", msg.payload.message);
           break;
@@ -94,6 +109,7 @@ export function useWebSocket(
     },
     [
       setDocument,
+      setActiveFile,
       setRevision,
       setParticipants,
       updateCursor,
@@ -102,11 +118,13 @@ export function useWebSocket(
       appendToken,
       finishStreaming,
       onRemoteEdit,
+      onSessionDeleted,
     ],
   );
 
   // ── connect ──────────────────────────────────────────
   const connect = useCallback(() => {
+    if (!shouldReconnectRef.current) return;
     if (!token || !sessionId) return;
     if (wsRef.current?.readyState === WebSocket.OPEN) return;
 
@@ -133,6 +151,8 @@ export function useWebSocket(
       console.log("[WS] Disconnected");
       setStatus("disconnected");
       wsRef.current = null;
+
+      if (!shouldReconnectRef.current) return;
 
       // exponential backoff reconnect — max 30s
       const delay = Math.min(1000 * 2 ** reconnectAttempts.current, 30000);
@@ -167,10 +187,13 @@ export function useWebSocket(
   // ── connect on mount, cleanup on unmount ─────────────
   useEffect(() => {
     if (!ready) return;
+    shouldReconnectRef.current = true;
     connect();
     return () => {
+      shouldReconnectRef.current = false;
       if (reconnectRef.current) {
         clearTimeout(reconnectRef.current);
+        reconnectRef.current = null;
       }
       wsRef.current?.close();
     };
