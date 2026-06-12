@@ -1,0 +1,8 @@
+.git
+.next
+.vscode
+node_modules
+server
+*.log
+.env*
+!.env.docker.example
