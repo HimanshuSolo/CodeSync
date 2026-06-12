@@ -63,11 +63,23 @@ export interface AiMessage {
 }
 
 export interface AiRequest {
+  requestId: string
   prompt: string
   selectedCode: string
   language: Language
   startLine: number
   endLine: number
+}
+
+export interface CodeSelection {
+  code: string
+  startLine: number
+  endLine: number
+}
+
+export interface OpenFileRequest {
+  path: string
+  document: string
 }
 
 export interface AuthUser {
