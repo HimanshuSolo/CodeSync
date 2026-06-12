@@ -18,18 +18,21 @@ export function useAuth() {
 
   // Load user from localStorage AFTER hydration
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem(USER_KEY);
+    const timeout = setTimeout(() => {
+      try {
+        const stored = localStorage.getItem(USER_KEY);
 
-      if (stored) {
-        setUser(JSON.parse(stored) as AuthUser);
+        if (stored) {
+          setUser(JSON.parse(stored) as AuthUser);
+        }
+      } catch {
+        localStorage.removeItem(USER_KEY);
+        localStorage.removeItem(TOKEN_KEY);
+      } finally {
+        setHydrated(true);
       }
-    } catch {
-      localStorage.removeItem(USER_KEY);
-      localStorage.removeItem(TOKEN_KEY);
-    } finally {
-      setHydrated(true);
-    }
+    }, 0)
+    return () => clearTimeout(timeout)
   }, []);
 
   // Persist user
