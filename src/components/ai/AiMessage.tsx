@@ -40,7 +40,7 @@ export default function AiMessage({ message }: { message: AiMessageType }) {
   const isUser = message.role === "user"
 
   return (
-    <div className={`flex gap-2.5 group ${isUser ? "flex-row-reverse" : "flex-row"}`}>
+    <div className={`group flex min-w-0 gap-2.5 ${isUser ? "flex-row-reverse" : "flex-row"}`}>
 
       {/* avatar */}
       <div className={`w-6 h-6 rounded-full flex-shrink-0 flex items-center justify-center mt-0.5 ${
@@ -55,8 +55,8 @@ export default function AiMessage({ message }: { message: AiMessageType }) {
       </div>
 
       {/* bubble */}
-      <div className={`flex flex-col gap-1 max-w-[85%] ${isUser ? "items-end" : "items-start"}`}>
-        <div className={`rounded-xl px-3 py-2 text-sm leading-relaxed ${
+      <div className={`flex min-w-0 max-w-[85%] flex-col gap-1 ${isUser ? "items-end" : "items-start"}`}>
+        <div className={`min-w-0 max-w-full overflow-hidden break-words rounded-xl px-3 py-2 text-sm leading-relaxed ${
           isUser
             ? "bg-violet-600 text-white rounded-tr-sm"
             : "bg-muted text-foreground rounded-tl-sm"
@@ -67,9 +67,9 @@ export default function AiMessage({ message }: { message: AiMessageType }) {
             <p className="text-sm">{message.content}</p>
           ) : (
             // AI messages — markdown rendered
-            <div className="prose prose-invert prose-sm max-w-none
+            <div className="prose prose-invert prose-sm min-w-0 max-w-full break-words
               prose-p:my-1 prose-p:leading-relaxed
-              prose-pre:bg-zinc-900 prose-pre:border prose-pre:border-border prose-pre:rounded-lg prose-pre:text-xs
+              prose-pre:max-w-full prose-pre:overflow-x-auto prose-pre:bg-zinc-900 prose-pre:border prose-pre:border-border prose-pre:rounded-lg prose-pre:text-xs
               prose-code:bg-zinc-900 prose-code:text-violet-300 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:text-xs prose-code:before:content-none prose-code:after:content-none
               prose-headings:text-foreground prose-headings:font-semibold
               prose-strong:text-foreground
