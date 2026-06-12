@@ -7,6 +7,9 @@ pub struct Config {
     pub groq_api_key: String,
     pub host:         String,
     pub port:         u16,
+    pub workspace_root: String,
+    pub runner_workspace_root: String,
+    pub runner_volume_name: Option<String>,
 }
 
 impl Config {
@@ -23,6 +26,13 @@ impl Config {
                             .unwrap_or_else(|_| "8080".to_string())
                             .parse()
                             .expect("PORT must be a valid number"),
+            workspace_root: env::var("WORKSPACE_ROOT")
+                .unwrap_or_else(|_| "./workspaces".to_string()),
+            runner_workspace_root: env::var("RUNNER_WORKSPACE_ROOT")
+                .unwrap_or_else(|_| std::env::temp_dir().to_string_lossy().to_string()),
+            runner_volume_name: env::var("RUNNER_VOLUME_NAME")
+                .ok()
+                .filter(|value| !value.trim().is_empty()),
         }
     }
 }
