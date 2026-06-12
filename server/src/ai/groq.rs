@@ -95,6 +95,9 @@ pub async fn stream_ai_response(
             let _ = broadcast_tx.send(ServerMessage::Error {
                 message: "AI request failed".into(),
             });
+            let _ = broadcast_tx.send(ServerMessage::AiDone {
+                message_id: message_id.to_string(),
+            });
             return;
         }
     };
@@ -106,6 +109,9 @@ pub async fn stream_ai_response(
         let _ = broadcast_tx.send(ServerMessage::Error {
             message: format!("AI error: {}", status),
         });
+        let _ = broadcast_tx.send(ServerMessage::AiDone {
+            message_id: message_id.to_string(),
+        });
         return;
     }
 
@@ -113,6 +119,7 @@ pub async fn stream_ai_response(
     use futures::StreamExt;
     let mut stream = response.bytes_stream();
     let msg_id     = message_id.to_string();
+    let mut pending = String::new();
 
     while let Some(chunk) = stream.next().await {
         let chunk = match chunk {
@@ -123,42 +130,42 @@ pub async fn stream_ai_response(
             }
         };
 
-        // SSE format: "data: {...}\n\n"
-        let text = String::from_utf8_lossy(&chunk);
+        pending.push_str(&String::from_utf8_lossy(&chunk).replace("\r\n", "\n"));
 
-        for line in text.lines() {
-            // skip empty lines and comments
-            if !line.starts_with("data: ") { continue; }
+        while let Some(event_end) = pending.find("\n\n") {
+            let event = pending[..event_end].to_string();
+            pending.drain(..event_end + 2);
 
-            let data = &line["data: ".len()..];
+            for line in event.lines() {
+                if !line.starts_with("data: ") { continue; }
+                let data = &line["data: ".len()..];
 
-            // stream finished
-            if data == "[DONE]" {
-                let _ = broadcast_tx.send(ServerMessage::AiDone {
-                    message_id: msg_id.clone(),
-                });
-                tracing::info!("AI stream complete for message {}", msg_id);
-                return;
-            }
+                if data == "[DONE]" {
+                    let _ = broadcast_tx.send(ServerMessage::AiDone {
+                        message_id: msg_id.clone(),
+                    });
+                    tracing::info!("AI stream complete for message {}", msg_id);
+                    return;
+                }
 
-            // parse the JSON chunk
-            match serde_json::from_str::<GroqChunk>(data) {
-                Ok(chunk) => {
-                    if let Some(token) = chunk.choices
-                        .into_iter()
-                        .next()
-                        .and_then(|c| c.delta.content)
-                    {
-                        if !token.is_empty() {
-                            let _ = broadcast_tx.send(ServerMessage::AiToken {
-                                message_id: msg_id.clone(),
-                                token,
-                            });
+                match serde_json::from_str::<GroqChunk>(data) {
+                    Ok(chunk) => {
+                        if let Some(token) = chunk.choices
+                            .into_iter()
+                            .next()
+                            .and_then(|c| c.delta.content)
+                        {
+                            if !token.is_empty() {
+                                let _ = broadcast_tx.send(ServerMessage::AiToken {
+                                    message_id: msg_id.clone(),
+                                    token,
+                                });
+                            }
                         }
                     }
-                }
-                Err(e) => {
-                    tracing::warn!("Failed to parse SSE chunk: {e} — data: {data}");
+                    Err(e) => {
+                        tracing::warn!("Failed to parse SSE event: {e} — data: {data}");
+                    }
                 }
             }
         }
