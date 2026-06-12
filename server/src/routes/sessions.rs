@@ -4,12 +4,15 @@ use axum::{
 };
 use serde::Serialize;
 use uuid::Uuid;
+use std::path::Path as FilePath;
+use tokio::fs;
 use crate::{
     db,
     errors::{AppError, AppResult},
     middleware::auth::CurrentUser,
     models::session::{CreateSession, Session, SessionSummary},
     state::AppState,
+    ws::session::ActorMessage,
 };
 // ── response shapes ───────────────────────────────────────────────────────────
 
@@ -116,7 +119,23 @@ pub async fn delete_session(
         return Err(AppError::NotFound("Session not found".into()));
     }
 
+    if let Some((_, handle)) = state.sessions.remove(&id.to_string()) {
+        let _ = handle.tx.send(ActorMessage::Shutdown).await;
+    }
+
+    let workspace = FilePath::new(&state.config.workspace_root).join(id.to_string());
+    if workspace.exists() {
+        if let Err(err) = fs::remove_dir_all(&workspace).await {
+            tracing::error!(
+                "Failed to delete workspace for session {} at {}: {}",
+                id,
+                workspace.display(),
+                err,
+            );
+        }
+    }
+
     Ok(Json(DeleteResponse {
-        message: "Session deleted successfully".into(),
+        message: "Session and workspace deleted successfully".into(),
     }))
 }
