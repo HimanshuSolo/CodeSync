@@ -5,16 +5,17 @@ import type * as Monaco from "monaco-editor"
 import { useSessionStore } from "@/store/sessionStore"
 import { useAiStore } from "@/store/aiStore"
 import type { ClientMessage } from "@/lib/ws-messages"
-import type { EditOp, AiRequest } from "@/types"
+import type { EditOp, AiRequest, CodeSelection } from "@/types"
 
 interface UseEditorProps {
   send: (msg: ClientMessage) => void
   userId: string
   clientId: string
   language: string
+  onSelectionChange?: (selection: CodeSelection | null) => void
 }
 
-export function useEditor({ send, userId, clientId, language }: UseEditorProps) {
+export function useEditor({ send, userId, clientId, language, onSelectionChange }: UseEditorProps) {
   const editorRef   = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null)
   const revisionRef = useRef(0)
   const documentRef = useRef("")
@@ -23,12 +24,37 @@ export function useEditor({ send, userId, clientId, language }: UseEditorProps) 
   const { document, revision, setDocument, setRevision } = useSessionStore()
   const { addUserMessage, startStreaming } = useAiStore()
 
+  const emitSelection = useCallback((editor: Monaco.editor.IStandaloneCodeEditor) => {
+    const model = editor.getModel()
+    const selection = editor.getSelection()
+
+    if (!model || !selection || selection.isEmpty()) {
+      onSelectionChange?.(null)
+      return
+    }
+
+    onSelectionChange?.({
+      code: model.getValueInRange(selection),
+      startLine: selection.startLineNumber,
+      endLine: selection.endLineNumber,
+    })
+  }, [onSelectionChange])
+
   useEffect(() => {
     revisionRef.current = revision
   }, [revision])
 
   useEffect(() => {
     documentRef.current = document
+    const model = editorRef.current?.getModel()
+    if (model && model.getValue() !== document) {
+      applyingRemoteEditRef.current = true
+      try {
+        model.setValue(document)
+      } finally {
+        applyingRemoteEditRef.current = false
+      }
+    }
   }, [document])
 
   // ── send an AI request ───────────────────────────────
@@ -42,6 +68,7 @@ export function useEditor({ send, userId, clientId, language }: UseEditorProps) 
     startStreaming(assistantMsgId)
 
     const request: AiRequest = {
+      requestId: assistantMsgId,
       prompt,
       selectedCode,
       language: language as import("@/types").Language,
@@ -72,6 +99,9 @@ export function useEditor({ send, userId, clientId, language }: UseEditorProps) 
       })
     })
 
+    editor.onDidChangeCursorSelection(() => emitSelection(editor))
+    editor.onDidChangeModelContent(() => emitSelection(editor))
+
     // Cmd+K → trigger AI on selected code
     editor.addAction({
       id:    "codesync.askAi",
@@ -98,7 +128,7 @@ export function useEditor({ send, userId, clientId, language }: UseEditorProps) 
         )
       },
     })
-  }, [handleAiRequest, revision, send, userId])
+  }, [emitSelection, handleAiRequest, revision, send, userId])
 
   // ── called on every keystroke ────────────────────────
   const handleChange = useCallback((value: string | undefined) => {
