@@ -88,19 +88,70 @@ export const sessionApi = {
     }),
 };
 
-// ── compile ──────────────────────────────────────────────────────────────────
-export interface CompileResult {
+// ── isolated code execution ─────────────────────────────────────────────────
+export interface RunResult {
   success: boolean;
   stdout: string;
   stderr: string;
   exit_code: number | null;
   duration_ms: number;
+  timed_out: boolean;
 }
 
-export const compileApi = {
-  rust: (code: string) =>
-    request<CompileResult>("/compile/rust", {
+export const runnerApi = {
+  run: (language: import("@/types").Language, code: string, stdin: string) =>
+    request<RunResult>("/run", {
       method: "POST",
-      body: JSON.stringify({ code }),
+      body: JSON.stringify({ language, code, stdin }),
+    }),
+};
+
+// ── repository workspaces ───────────────────────────────────────────────────
+export interface RepositoryStatus {
+  branch: string;
+  changes: string[];
+}
+
+export const repositoryApi = {
+  import: (sessionId: string, repoUrl: string, branch: string, githubToken: string) =>
+    request<{ message: string }>(`/sessions/${sessionId}/repository`, {
+      method: "POST",
+      body: JSON.stringify({
+        repo_url: repoUrl,
+        branch: branch || null,
+        github_token: githubToken || null,
+      }),
+    }),
+
+  tree: (sessionId: string) =>
+    request<{ files: string[] }>(`/sessions/${sessionId}/repository/tree`),
+
+  readFile: (sessionId: string, path: string) =>
+    request<{ path: string; content: string }>(
+      `/sessions/${sessionId}/repository/file?path=${encodeURIComponent(path)}`,
+    ),
+
+  writeFile: (sessionId: string, path: string, content: string) =>
+    request<{ message: string }>(`/sessions/${sessionId}/repository/file`, {
+      method: "PUT",
+      body: JSON.stringify({ path, content }),
+    }),
+
+  status: (sessionId: string) =>
+    request<RepositoryStatus>(`/sessions/${sessionId}/repository/status`),
+
+  commit: (sessionId: string, message: string) =>
+    request<{ message: string }>(`/sessions/${sessionId}/repository/commit`, {
+      method: "POST",
+      body: JSON.stringify({ message }),
+    }),
+
+  push: (sessionId: string, branch: string, githubToken: string) =>
+    request<{ message: string }>(`/sessions/${sessionId}/repository/push`, {
+      method: "POST",
+      body: JSON.stringify({
+        branch: branch || null,
+        github_token: githubToken || null,
+      }),
     }),
 };
