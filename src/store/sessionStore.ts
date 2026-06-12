@@ -4,6 +4,7 @@ import type { Session, Participant, EditOp } from "@/types";
 interface SessionState {
   currentSession: Session | null;
   document: string;
+  activeFile: string | null;
   revision: number;
   participants: Participant[];
 
@@ -13,6 +14,7 @@ interface SessionState {
   setCurrentSession: (session: Session) => void;
   setCurrentUserId: (id: string) => void;
   setDocument: (doc: string) => void;
+  setActiveFile: (path: string | null) => void;
   applyRemoteEdit: (op: EditOp) => void;
   setRevision: (rev: number) => void;
   setParticipants: (participants: Participant[]) => void;
@@ -26,6 +28,7 @@ interface SessionState {
 const initialState = {
   currentSession: null,
   document: "",
+  activeFile: null,
   revision: 0,
   participants: [],
   sessions: [],
@@ -40,6 +43,7 @@ export const useSessionStore = create<SessionState>((set) => ({
   setCurrentUserId: (id) => set({ currentUserId: id }),
 
   setDocument: (doc) => set({ document: doc }),
+  setActiveFile: (path) => set({ activeFile: path }),
 
   applyRemoteEdit: (op) =>
     set((state) => {
