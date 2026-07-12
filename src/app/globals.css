@@ -102,3 +102,28 @@
     @apply bg-muted-foreground/50;
   }
 }
+
+/* remote collaborator cursors -- see CursorLayer.tsx */
+.remote-cursor {
+  position: relative;
+  pointer-events: none;
+}
+
+.remote-cursor-caret {
+  width: 2px;
+  height: 1.4em;
+  border-radius: 1px;
+}
+
+.remote-cursor-label {
+  position: absolute;
+  top: -1.35em;
+  left: 0;
+  white-space: nowrap;
+  font-size: 0.65rem;
+  line-height: 1.4;
+  padding: 0 5px;
+  border-radius: 3px 3px 3px 0;
+  color: #0a0a0a;
+  font-weight: 600;
+}
