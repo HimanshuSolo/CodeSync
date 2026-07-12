@@ -94,13 +94,14 @@ pub async fn get_session(
         .await?
         .ok_or_else(|| AppError::NotFound("Session not found".into()))?;
 
-    let is_allowed = session.owner_id == current_user.id
-        || db::sessions::is_member(&state.db, session.id, current_user.id).await?;
-
-    if !is_allowed {
-        return Err(AppError::Unauthorized(
-            "You do not have access to this session".into(),
-        ));
+    // Anyone authenticated who has the link can join as a collaborator --
+    // mirrors ws::handler::ws_handler's auto-add behavior. This endpoint
+    // used to reject non-members outright, which meant a shared link
+    // failed here before the WebSocket's more permissive check ever ran.
+    if session.owner_id != current_user.id
+        && !db::sessions::is_member(&state.db, session.id, current_user.id).await?
+    {
+        db::sessions::add_member(&state.db, session.id, current_user.id).await?;
     }
 
     Ok(Json(SessionResponse { session }))
