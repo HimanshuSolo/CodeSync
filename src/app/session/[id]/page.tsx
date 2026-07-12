@@ -107,7 +107,7 @@ export default function SessionPage() {
   const router    = useRouter()
   const sessionId = params.id as string
   const { user }  = useAuth()
-  const { document: doc, activeFile, setDocument } = useSessionStore()
+  const { document: doc, activeFile, setDocument, participants } = useSessionStore()
   const [clientId] = useState(() => crypto.randomUUID())
   const currentUserId = user?.id || ""
   const editorContainerRef = useRef<HTMLDivElement | null>(null)
