@@ -1,0 +1,11 @@
+# The Rust backend deploys separately to the VPS -- Vercel only builds the
+# Next.js frontend and never needs any of this. Excluding it explicitly here
+# because Vercel's uploader doesn't seem to honor server/.gitignore's nested
+# `target/` exclusion, which made the very first deploy upload ~3GB of Rust
+# build artifacts that should never have left this machine.
+/server
+
+# Already covered by .gitignore, but explicit here too since these are the
+# other large directories that must never be uploaded.
+/node_modules
+/.next
