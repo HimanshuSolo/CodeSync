@@ -17,6 +17,7 @@ import {
 import UserPresence  from "@/components/session/UserPresence"
 import RepositoryPanel from "@/components/session/RepositoryPanel"
 import AiPanel       from "@/components/ai/AiPanel"
+import { CursorLayer } from "@/components/editor/CursorLayer"
 import { useAuth }   from "@/hooks/useAuth"
 import { useWebSocket }  from "@/hooks/useWebSocket"
 import { useEditor }     from "@/hooks/useEditor"
