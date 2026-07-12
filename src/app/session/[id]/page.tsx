@@ -361,6 +361,7 @@ export default function SessionPage() {
             automaticLayout:            true,
           }}
         />
+        <CursorLayer editor={editorRef.current} participants={participants} currentUserId={currentUserId} />
       </div>
       {executableLanguage(activeFile, session?.language || "typescript") && (
         <div className="max-h-[35vh] flex-shrink-0 overflow-auto border-t border-border bg-zinc-950 px-3 py-3 font-mono text-xs sm:max-h-56 sm:px-4">
