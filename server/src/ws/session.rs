@@ -159,7 +159,16 @@ pub enum ActorMessage {
     ClientMsg { user_id: Uuid, msg: ClientMessage },
     UserJoined { user_id: Uuid, username: String, avatar_color: String },
     UserLeft  { user_id: Uuid },
+    /// Sent when a session's owner deletes it. Tells connected clients
+    /// the session is gone for good.
     Shutdown,
+    /// Sent to every live actor when the server process itself is
+    /// shutting down (SIGINT/SIGTERM). Distinct from `Shutdown` — this
+    /// is a temporary process restart, not a deletion, so it persists
+    /// the current document/revision instead of telling clients the
+    /// session was deleted. Connections simply drop and the frontend's
+    /// existing reconnect-with-backoff picks the session back up.
+    PersistAndShutdown,
 }
 
 /// Determine which historical ops a client-submitted edit needs to be
@@ -315,6 +324,17 @@ async fn run_actor(
                 let _ = broadcast_tx.send(ServerMessage::SessionDeleted {
                     message: "This session was deleted by its owner".into(),
                 });
+                break;
+            }
+
+            ActorMessage::PersistAndShutdown => {
+                if let Err(e) = db::sessions::update_document(&db, session_id, &doc, rev).await {
+                    tracing::error!(
+                        "Failed to persist session {session_id} during server shutdown: {e}"
+                    );
+                } else {
+                    tracing::info!("Persisted session {session_id} at revision {rev} before shutdown");
+                }
                 break;
             }
 

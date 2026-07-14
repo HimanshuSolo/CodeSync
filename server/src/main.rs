@@ -20,7 +20,9 @@ mod ws;
 use config::Config;
 use crate::middleware as mw;
 use routes::{auth, compile, health, repositories, sessions};
-use state::AppState;
+use state::{AppState, SessionRegistry};
+use std::sync::Arc;
+use ws::session::ActorMessage;
 
 #[tokio::main]
 async fn main() {
@@ -52,6 +54,7 @@ async fn main() {
     tracing::info!("Migrations applied ✓");
 
     let state = AppState::new(pool, config.clone());
+    let sessions_for_shutdown = state.sessions.clone();
 
     let cors = CorsLayer::new()
         .allow_origin(Any)
@@ -102,6 +105,48 @@ async fn main() {
     tracing::info!("Listening on http://{addr}");
 
     axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown_signal(sessions_for_shutdown))
         .await
         .expect("Server failed");
+}
+
+/// Waits for SIGINT (Ctrl+C) or SIGTERM, then tells every live session
+/// actor to persist its current document/revision before the process
+/// exits. Without this, a redeploy or `docker compose down` could lose
+/// any edits made since the last automatic snapshot (every 10 revisions).
+async fn shutdown_signal(sessions: Arc<SessionRegistry>) {
+    let ctrl_c = async {
+        tokio::signal::ctrl_c()
+            .await
+            .expect("Failed to install Ctrl+C handler");
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+            .expect("Failed to install SIGTERM handler")
+            .recv()
+            .await;
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        _ = ctrl_c => {},
+        _ = terminate => {},
+    }
+
+    let session_count = sessions.len();
+    tracing::info!("Shutdown signal received — flushing {session_count} active session(s)...");
+
+    for entry in sessions.iter() {
+        let _ = entry.value().tx.send(ActorMessage::PersistAndShutdown).await;
+    }
+
+    // Give actors a brief moment to finish the DB write before Axum stops
+    // accepting new connections and this future returns.
+    if session_count > 0 {
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    }
 }
