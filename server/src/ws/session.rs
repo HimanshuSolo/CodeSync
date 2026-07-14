@@ -185,11 +185,11 @@ pub enum ActorMessage {
 /// `history` — the caller should force a full resync rather than
 /// transform against a partial view, which would silently corrupt the
 /// shared document for every participant.
-fn ops_since_client_revision<'a>(
-    history: &'a [EditOp],
+fn ops_since_client_revision(
+    history: &[EditOp],
     history_base_revision: i64,
     client_rev: i64,
-) -> Option<&'a [EditOp]> {
+) -> Option<&[EditOp]> {
     if client_rev < history_base_revision {
         return None;
     }
