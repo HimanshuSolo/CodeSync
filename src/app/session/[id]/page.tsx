@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect, useRef } from "react"
 import { useParams, useRouter } from "next/navigation"
 import dynamic from "next/dynamic"
 import Link from "next/link"
+import type * as Monaco from "monaco-editor"
 import { Bot, Code2, Share2, Settings, ChevronLeft, Globe, Check, Loader2, Terminal, GitFork, Users } from "lucide-react"
 import { Button }    from "@/components/ui/button"
 import { Badge }     from "@/components/ui/badge"
@@ -111,6 +112,12 @@ export default function SessionPage() {
   const [clientId] = useState(() => crypto.randomUUID())
   const currentUserId = user?.id || ""
   const editorContainerRef = useRef<HTMLDivElement | null>(null)
+  // Mirrors editorRef.current in state — reading a ref during render (as
+  // <CursorLayer editor={editorRef.current}> did) doesn't trigger a
+  // re-render when the ref is set on mount, so CursorLayer could end up
+  // stuck rendering against a stale/null editor until something unrelated
+  // happened to re-render this component.
+  const [editorInstance, setEditorInstance] = useState<Monaco.editor.IStandaloneCodeEditor | null>(null)
 
   const [session, setSession]       = useState<Session | null>(null)
   const [loading, setLoading]       = useState(true)
@@ -341,7 +348,10 @@ export default function SessionPage() {
           language={editorLanguage(activeFile, session?.language || "typescript")}
           defaultValue={doc}
           onChange={handleChange}
-          onMount={handleEditorMount}
+          onMount={(editor) => {
+            handleEditorMount(editor)
+            setEditorInstance(editor)
+          }}
           theme="vs-dark"
           options={{
             fontSize:                   14,
@@ -361,7 +371,7 @@ export default function SessionPage() {
             automaticLayout:            true,
           }}
         />
-        <CursorLayer editor={editorRef.current} participants={participants} currentUserId={currentUserId} />
+        <CursorLayer editor={editorInstance} participants={participants} currentUserId={currentUserId} />
       </div>
       {executableLanguage(activeFile, session?.language || "typescript") && (
         <div className="max-h-[35vh] flex-shrink-0 overflow-auto border-t border-border bg-zinc-950 px-3 py-3 font-mono text-xs sm:max-h-56 sm:px-4">

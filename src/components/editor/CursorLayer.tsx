@@ -78,12 +78,13 @@ export function CursorLayer({ editor, participants, currentUserId }: CursorLayer
   // Full cleanup only on unmount (e.g. leaving the session) -- the effect
   // above already removes individual widgets as participants leave.
   useEffect(() => {
+    const widgets = widgetsRef.current
     return () => {
       if (!editor) return
-      for (const widget of widgetsRef.current.values()) {
+      for (const widget of widgets.values()) {
         editor.removeContentWidget(widget)
       }
-      widgetsRef.current.clear()
+      widgets.clear()
     }
   }, [editor])
 
