@@ -64,7 +64,13 @@ export function useEditor({ send, userId, clientId, language, onSelectionChange 
     startLine: number,
     endLine: number
   ) => {
-    const assistantMsgId = addUserMessage(prompt)
+    // Only attach a selection (and therefore offer "Apply" later) when this
+    // request was actually scoped to a real selection, not a whole-document
+    // fallback -- applying a reply back onto "the whole file" is ambiguous.
+    const selection = selectedCode.trim()
+      ? { code: selectedCode, startLine, endLine }
+      : undefined
+    const assistantMsgId = addUserMessage(prompt, selection)
     startStreaming(assistantMsgId)
 
     const request: AiRequest = {
@@ -252,11 +258,40 @@ export function useEditor({ send, userId, clientId, language, onSelectionChange 
     }
   }, [clientId, setDocument, setRevision])
 
+  // ── apply an AI-suggested code block back into the editor ──
+  // Reuses the exact same path a manual keystroke takes: executeEdits
+  // mutates the Monaco model, which fires onDidChangeModelContent, which
+  // @monaco-editor/react turns into an onChange call -- handleChange then
+  // diffs it against documentRef.current and sends the resulting EditOp
+  // over the WebSocket like any other edit. No separate broadcast/OT path
+  // to keep correct -- applying an AI suggestion is collaboratively safe
+  // for free, the same way it's safe for every other participant's edits.
+  const applyAiSuggestion = useCallback((code: string, selection: CodeSelection) => {
+    const editor = editorRef.current
+    const model = editor?.getModel()
+    if (!editor || !model) return
+
+    const startLine = Math.min(selection.startLine, model.getLineCount())
+    const endLine = Math.min(selection.endLine, model.getLineCount())
+
+    editor.executeEdits("ai-apply", [{
+      range: {
+        startLineNumber: startLine,
+        startColumn: 1,
+        endLineNumber: endLine,
+        endColumn: model.getLineMaxColumn(endLine),
+      },
+      text: code,
+    }])
+    editor.focus()
+  }, [])
+
   return {
     handleEditorMount,
     handleChange,
     handleCursorChange,
     handleAiRequest,
+    applyAiSuggestion,
     applyRemoteEdit,
     editorRef,
   }

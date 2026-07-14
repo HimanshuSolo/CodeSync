@@ -13,11 +13,12 @@ interface AiPanelProps {
   sessionId: string
   onSend: (prompt: string) => void
   selection: CodeSelection | null
+  onApply?: (code: string, selection: CodeSelection) => void
 }
 
 const CHAT_STORAGE_PREFIX = "codesync_ai_chat:"
 
-export default function AiPanel({ sessionId, onSend, selection }: AiPanelProps) {
+export default function AiPanel({ sessionId, onSend, selection, onApply }: AiPanelProps) {
   const [input, setInput] = useState("")
   const [hydrated, setHydrated] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -155,7 +156,7 @@ export default function AiPanel({ sessionId, onSend, selection }: AiPanelProps) 
         ) : (
           <div className="flex flex-col gap-4">
             {displayMessages.map((msg) => (
-              <AiMessage key={msg.id} message={msg} />
+              <AiMessage key={msg.id} message={msg} onApply={onApply} />
             ))}
           </div>
         )}

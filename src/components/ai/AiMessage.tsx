@@ -2,10 +2,22 @@
 
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
-import { Bot, User, Copy, Check } from "lucide-react"
-import { useState } from "react"
+import { Bot, User, Copy, Check, Wand2 } from "lucide-react"
+import { isValidElement, useState, type ReactNode } from "react"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import type { AiMessage as AiMessageType } from "@/types"
+import type { AiMessage as AiMessageType, CodeSelection } from "@/types"
+
+// react-markdown renders fenced code blocks as plain string children (no
+// syntax-highlight plugin is installed), but walk defensively in case that
+// ever changes -- nested elements or arrays should still yield the raw text.
+function extractText(node: ReactNode): string {
+  if (typeof node === "string" || typeof node === "number") return String(node)
+  if (Array.isArray(node)) return node.map(extractText).join("")
+  if (isValidElement(node)) {
+    return extractText((node.props as { children?: ReactNode }).children)
+  }
+  return ""
+}
 
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false)
@@ -36,7 +48,77 @@ function CopyButton({ text }: { text: string }) {
   )
 }
 
-export default function AiMessage({ message }: { message: AiMessageType }) {
+function ApplyButton({ onApply }: { onApply: () => void }) {
+  const [applied, setApplied] = useState(false)
+
+  function handleClick() {
+    onApply()
+    setApplied(true)
+    setTimeout(() => setApplied(false), 2000)
+  }
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          onClick={handleClick}
+          className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium text-violet-300 transition-colors hover:bg-violet-950/60 hover:text-violet-200"
+        >
+          {applied
+            ? <Check className="w-3 h-3 text-green-400" />
+            : <Wand2 className="w-3 h-3" />
+          }
+          {applied ? "Applied" : "Apply"}
+        </button>
+      </TooltipTrigger>
+      <TooltipContent>
+        <p className="text-xs">{applied ? "Applied to editor" : "Replace the selected code with this"}</p>
+      </TooltipContent>
+    </Tooltip>
+  )
+}
+
+interface CodeBlockProps {
+  children?: ReactNode
+  selection?: CodeSelection
+  onApply?: (code: string, selection: CodeSelection) => void
+}
+
+function CodeBlock({ children, selection, onApply }: CodeBlockProps) {
+  const codeElement = Array.isArray(children) ? children[0] : children
+  const className = isValidElement(codeElement)
+    ? String((codeElement.props as { className?: string }).className ?? "")
+    : ""
+  const language = /language-(\w+)/.exec(className)?.[1]
+  const codeText = extractText(codeElement).replace(/\n$/, "")
+
+  return (
+    <div className="my-2 overflow-hidden rounded-lg border border-border bg-zinc-900">
+      <div className="flex items-center justify-between border-b border-border/60 bg-zinc-950/60 px-2.5 py-1">
+        <span className="font-mono text-[10px] uppercase tracking-wide text-muted-foreground">
+          {language || "code"}
+        </span>
+        <div className="flex items-center gap-0.5">
+          <CopyButton text={codeText} />
+          {onApply && selection && (
+            <ApplyButton onApply={() => onApply(codeText, selection)} />
+          )}
+        </div>
+      </div>
+      <pre className="!m-0 overflow-x-auto !rounded-none !border-0 !bg-transparent p-3 text-xs">
+        {children}
+      </pre>
+    </div>
+  )
+}
+
+export default function AiMessage({
+  message,
+  onApply,
+}: {
+  message: AiMessageType
+  onApply?: (code: string, selection: CodeSelection) => void
+}) {
   const isUser = message.role === "user"
 
   return (
@@ -75,7 +157,18 @@ export default function AiMessage({ message }: { message: AiMessageType }) {
               prose-strong:text-foreground
               prose-ul:my-1 prose-li:my-0.5
             ">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
+                components={{
+                  pre: (preProps) => (
+                    <CodeBlock
+                      {...preProps}
+                      selection={message.selection}
+                      onApply={message.isStreaming ? undefined : onApply}
+                    />
+                  ),
+                }}
+              >
                 {message.content || " "}
               </ReactMarkdown>
 

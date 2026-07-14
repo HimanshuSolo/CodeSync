@@ -60,6 +60,10 @@ export interface AiMessage {
   content: string
   isStreaming: boolean
   timestamp: string
+  // The code selection this reply was generated from, if any. Lets the UI
+  // offer "Apply" on a code block in the response — it replaces exactly
+  // this range in the live document.
+  selection?: CodeSelection
 }
 
 export interface AiRequest {

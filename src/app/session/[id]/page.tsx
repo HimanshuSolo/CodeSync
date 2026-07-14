@@ -135,7 +135,7 @@ export default function SessionPage() {
   const token = typeof window !== "undefined"
     ? localStorage.getItem("codesync_token") : null
 
-  const { handleEditorMount, handleChange, handleAiRequest, applyRemoteEdit, editorRef } = useEditor({
+  const { handleEditorMount, handleChange, handleAiRequest, applyAiSuggestion, applyRemoteEdit, editorRef } = useEditor({
     send:     useCallback((msg: ClientMessage) => sendRef.current?.(msg), []),
     userId:   currentUserId,
     clientId,
@@ -411,6 +411,7 @@ export default function SessionPage() {
         sessionId={sessionId}
         onSend={handleAiPanelSend}
         selection={codeSelection}
+        onApply={applyAiSuggestion}
       />
     </div>
   )

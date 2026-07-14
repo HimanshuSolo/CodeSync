@@ -1,12 +1,12 @@
 import { create } from "zustand";
-import type { AiMessage } from "@/types";
+import type { AiMessage, CodeSelection } from "@/types";
 
 interface AiState {
   messages: AiMessage[];
   isStreaming: boolean;
   streamingMessageId: string | null;
 
-  addUserMessage: (content: string) => string;
+  addUserMessage: (content: string, selection?: CodeSelection) => string;
   startStreaming: (messageId: string) => void;
   appendToken: (messageId: string, token: string) => void;
   finishStreaming: (messageId: string) => void;
@@ -23,7 +23,7 @@ export const useAiStore = create<AiState>((set) => ({
   isStreaming: false,
   streamingMessageId: null,
 
-  addUserMessage: (content) => {
+  addUserMessage: (content, selection) => {
     const id = generateId();
     const message: AiMessage = {
       id,
@@ -39,6 +39,7 @@ export const useAiStore = create<AiState>((set) => ({
       content: "",
       isStreaming: true,
       timestamp: new Date().toISOString(),
+      selection,
     };
     set((state) => ({ messages: [...state.messages, message, assistantMsg] }));
     return assistantId;
