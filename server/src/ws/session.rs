@@ -162,6 +162,93 @@ pub enum ActorMessage {
     Shutdown,
 }
 
+/// Determine which historical ops a client-submitted edit needs to be
+/// transformed against.
+///
+/// `history[i]` always represents server revision `history_base_revision +
+/// i + 1` — `history_base_revision` starts at the actor's starting
+/// revision (which can be nonzero, e.g. resumed from a persisted
+/// snapshot) and is bumped every time old entries are trimmed from the
+/// front of `history`. This keeps `client_rev`-based lookups correct in
+/// both cases, instead of assuming revision 0 lines up with index 0.
+///
+/// Returns `None` if `client_rev` predates everything still retained in
+/// `history` — the caller should force a full resync rather than
+/// transform against a partial view, which would silently corrupt the
+/// shared document for every participant.
+fn ops_since_client_revision<'a>(
+    history: &'a [EditOp],
+    history_base_revision: i64,
+    client_rev: i64,
+) -> Option<&'a [EditOp]> {
+    if client_rev < history_base_revision {
+        return None;
+    }
+    let skip_count = (client_rev - history_base_revision) as usize;
+    Some(history.get(skip_count..).unwrap_or(&[]))
+}
+
+#[cfg(test)]
+mod history_tests {
+    use super::*;
+    use crate::ws::messages::OpType;
+
+    fn dummy_op(revision: u64) -> EditOp {
+        EditOp {
+            position:  0,
+            text:      String::new(),
+            op_type:   OpType::Insert,
+            revision,
+            user_id:   "u".into(),
+            client_id: None,
+        }
+    }
+
+    #[test]
+    fn up_to_date_client_gets_no_ops() {
+        let history = vec![dummy_op(1), dummy_op(2)];
+        let ops = ops_since_client_revision(&history, 0, 2).unwrap();
+        assert!(ops.is_empty());
+    }
+
+    #[test]
+    fn behind_client_gets_missed_ops() {
+        let history = vec![dummy_op(1), dummy_op(2), dummy_op(3)];
+        let ops = ops_since_client_revision(&history, 0, 1).unwrap();
+        assert_eq!(ops.len(), 2);
+        assert_eq!(ops[0].revision, 2);
+        assert_eq!(ops[1].revision, 3);
+    }
+
+    #[test]
+    fn base_revision_offsets_correctly_after_trim() {
+        // History was trimmed once: the first 100 ops are gone, so
+        // history[0] is now revision 101 and the base moved to 100.
+        let history = vec![dummy_op(101), dummy_op(102)];
+        let ops = ops_since_client_revision(&history, 100, 100).unwrap();
+        assert_eq!(ops.len(), 2);
+    }
+
+    #[test]
+    fn client_older_than_retained_history_forces_resync() {
+        let history = vec![dummy_op(101), dummy_op(102)];
+        let ops = ops_since_client_revision(&history, 100, 50);
+        assert!(ops.is_none());
+    }
+
+    #[test]
+    fn nonzero_starting_revision_is_handled() {
+        // Actor resumed from a persisted snapshot at revision 50 — an
+        // up-to-date client's base revision is 50, not 0. Before this
+        // fix, `history.iter().skip(client_rev as usize)` would have
+        // skipped 50 entries of an empty/short history and silently
+        // dropped ops that hadn't actually been seen by the client.
+        let history: Vec<EditOp> = vec![];
+        let ops = ops_since_client_revision(&history, 50, 50).unwrap();
+        assert!(ops.is_empty());
+    }
+}
+
 // ── actor loop ────────────────────────────────────────────────────────────────
 
 /// The core actor task — runs for the lifetime of a session.
@@ -180,6 +267,10 @@ async fn run_actor(
     let mut active_file: Option<String> = None;
     let mut participants: Vec<Participant> = Vec::new();
     let mut history: Vec<EditOp> = Vec::new();
+    // history[i] represents server revision `history_base_revision + i + 1`.
+    // Starts at the actor's starting revision (see ops_since_client_revision)
+    // and is bumped whenever the front of `history` is trimmed.
+    let mut history_base_revision: i64 = revision;
 
     while let Some(msg) = rx.recv().await {
         match msg {
@@ -237,11 +328,26 @@ async fn run_actor(
     // rev         = current server revision
     // if they differ, client missed some ops — transform
     let client_rev = op.revision as i64;
-    let ops_since: Vec<EditOp> = history
-        .iter()
-        .skip(client_rev as usize)
-        .cloned()
-        .collect();
+    let ops_since = match ops_since_client_revision(&history, history_base_revision, client_rev) {
+        Some(ops) => ops.to_vec(),
+        None => {
+            // The ops this client would need have already been trimmed
+            // from history. Transforming against a partial view would
+            // silently corrupt the document for everyone, so force a
+            // full resync instead and drop this stale edit.
+            tracing::warn!(
+                "Session {}: client revision {} predates retained history (base {}) — forcing resync",
+                session_id, client_rev, history_base_revision
+            );
+            let _ = broadcast_tx.send(ServerMessage::SessionState {
+                document:     doc.clone(),
+                active_file:  active_file.clone(),
+                participants: participants.clone(),
+                revision:     rev as u64,
+            });
+            continue;
+        }
+    };
 
     let mut transformed = op.clone();
     for past_op in &ops_since {
@@ -261,6 +367,7 @@ async fn run_actor(
     // ── keep history bounded — last 1000 ops ──────────────
     if history.len() > 1000 {
         history.drain(0..100);
+        history_base_revision += 100;
     }
 
     // ── persist every 10 revisions ─────────────────────────
@@ -330,6 +437,7 @@ async fn run_actor(
                         active_file = Some(req.path);
                         rev = 0;
                         history.clear();
+                        history_base_revision = 0;
 
                         if let Err(e) = db::sessions::update_document(
                             &db, session_id, &doc, rev
