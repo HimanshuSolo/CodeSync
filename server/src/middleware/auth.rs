@@ -112,3 +112,87 @@ pub async fn require_auth(
     // pass to next handler
     Ok(next.run(req).await)
 }// Phase 8 — JWT middleware
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header};
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    const SECRET: &str = "test-secret-value-not-used-in-production";
+
+    fn decode_with(token: &str, secret: &str) -> Result<jsonwebtoken::TokenData<Claims>, jsonwebtoken::errors::Error> {
+        decode::<Claims>(
+            token,
+            &DecodingKey::from_secret(secret.as_bytes()),
+            &Validation::new(Algorithm::HS256),
+        )
+    }
+
+    #[test]
+    fn create_token_round_trips_claims() {
+        let user_id = Uuid::new_v4();
+        let token = create_token(user_id, "alice", "alice@example.com", SECRET).unwrap();
+
+        let decoded = decode_with(&token, SECRET).expect("valid token should decode");
+
+        assert_eq!(decoded.claims.sub, user_id.to_string());
+        assert_eq!(decoded.claims.username, "alice");
+        assert_eq!(decoded.claims.email, "alice@example.com");
+        assert!(decoded.claims.exp > decoded.claims.iat, "token should expire after it's issued");
+    }
+
+    #[test]
+    fn expired_token_is_rejected() {
+        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as usize;
+        let claims = Claims {
+            sub:      Uuid::new_v4().to_string(),
+            username: "bob".into(),
+            email:    "bob@example.com".into(),
+            iat:      now - 1000,
+            exp:      now - 500, // expired 500s ago
+        };
+        let token = encode(&Header::default(), &claims, &EncodingKey::from_secret(SECRET.as_bytes())).unwrap();
+
+        assert!(decode_with(&token, SECRET).is_err());
+    }
+
+    #[test]
+    fn token_signed_with_wrong_secret_is_rejected() {
+        let user_id = Uuid::new_v4();
+        let token = create_token(user_id, "carol", "carol@example.com", "the-real-secret").unwrap();
+
+        assert!(decode_with(&token, "a-different-secret").is_err());
+    }
+
+    #[test]
+    fn tampered_token_is_rejected() {
+        let user_id = Uuid::new_v4();
+        let mut token = create_token(user_id, "dave", "dave@example.com", SECRET).unwrap();
+        // flip one character in the payload segment — must fail signature
+        // verification (or fail to parse), never silently succeed.
+        let mid = token.len() / 2;
+        let flipped = if token.as_bytes()[mid] == b'a' { 'b' } else { 'a' };
+        token.replace_range(mid..mid + 1, &flipped.to_string());
+
+        assert!(decode_with(&token, SECRET).is_err());
+    }
+
+    #[test]
+    fn malformed_sub_claim_fails_uuid_parse() {
+        // Mirrors require_auth's second validation step: a well-signed
+        // token with a non-UUID `sub` decodes fine but must still be
+        // rejected downstream when parsed as a Uuid.
+        let claims = Claims {
+            sub:      "not-a-uuid".into(),
+            username: "eve".into(),
+            email:    "eve@example.com".into(),
+            iat:      0,
+            exp:      9_999_999_999,
+        };
+        let token = encode(&Header::default(), &claims, &EncodingKey::from_secret(SECRET.as_bytes())).unwrap();
+
+        let decoded = decode_with(&token, SECRET).expect("well-signed token should still decode");
+        assert!(Uuid::parse_str(&decoded.claims.sub).is_err());
+    }
+}
