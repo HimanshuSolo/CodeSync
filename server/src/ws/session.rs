@@ -361,6 +361,29 @@ async fn run_actor(
 pub mod ot {
     use crate::ws::messages::{EditOp, OpType};
 
+    /// Op positions travel the wire as UTF-16 code-unit offsets — that's
+    /// what JavaScript string indexing and Monaco's `getPositionAt` /
+    /// `applyEdits` use on the frontend (see `useEditor.ts`). Transform
+    /// math must shift positions by the same unit, not by `str::len()`
+    /// (UTF-8 byte length), or multi-byte text (accents, CJK, emoji)
+    /// desyncs positions between client and server.
+    fn utf16_len(text: &str) -> usize {
+        text.encode_utf16().count()
+    }
+
+    /// Convert a UTF-16 code-unit offset into a byte offset into `s`,
+    /// clamping to the end of the string if the offset runs past it.
+    fn utf16_offset_to_byte_offset(s: &str, utf16_offset: usize) -> usize {
+        let mut utf16_count = 0;
+        for (byte_idx, ch) in s.char_indices() {
+            if utf16_count >= utf16_offset {
+                return byte_idx;
+            }
+            utf16_count += ch.len_utf16();
+        }
+        s.len()
+    }
+
     /// Transform op_a against op_b — returns adjusted op_a.
     /// Called when op_a was based on a revision that op_b
     /// has already been applied to.
@@ -373,7 +396,7 @@ pub mod ot {
                 || (op_b.position == op_a.position
                     && op_b.user_id < op_a.user_id) // tiebreak by user_id
                 {
-                    op_a.position += op_b.text.len();
+                    op_a.position += utf16_len(&op_b.text);
                 }
                 op_a
             }
@@ -381,7 +404,7 @@ pub mod ot {
             // ── insert vs delete ──────────────────────────
             (OpType::Insert, OpType::Delete) => {
                 if op_b.position < op_a.position {
-                    let shift = op_b.text.len().min(
+                    let shift = utf16_len(&op_b.text).min(
                         op_a.position - op_b.position
                     );
                     op_a.position -= shift;
@@ -392,7 +415,7 @@ pub mod ot {
             // ── delete vs insert ──────────────────────────
             (OpType::Delete, OpType::Insert) => {
                 if op_b.position <= op_a.position {
-                    op_a.position += op_b.text.len();
+                    op_a.position += utf16_len(&op_b.text);
                 }
                 op_a
             }
@@ -400,7 +423,7 @@ pub mod ot {
             // ── delete vs delete ──────────────────────────
             (OpType::Delete, OpType::Delete) => {
                 if op_b.position < op_a.position {
-                    let shift = op_b.text.len().min(
+                    let shift = utf16_len(&op_b.text).min(
                         op_a.position - op_b.position
                     );
                     op_a.position -= shift;
@@ -414,20 +437,142 @@ pub mod ot {
     }
 
     /// Apply an edit op to a document string.
-    /// Returns the new document.
+    /// `op.position` (and the length implied by `op.text`) are UTF-16
+    /// code-unit offsets; convert to byte offsets right before mutating
+    /// the UTF-8-backed `String`.
     pub fn apply(doc: &mut String, op: &EditOp) {
         match op.op_type {
             OpType::Insert => {
-                let pos = op.position.min(doc.len());
-                doc.insert_str(pos, &op.text);
+                let byte_pos = utf16_offset_to_byte_offset(doc, op.position);
+                doc.insert_str(byte_pos, &op.text);
             }
             OpType::Delete => {
-                let start = op.position.min(doc.len());
-                let end   = (op.position + op.text.len()).min(doc.len());
-                if start < end {
-                    doc.drain(start..end);
+                let start_byte = utf16_offset_to_byte_offset(doc, op.position);
+                let end_utf16  = op.position + utf16_len(&op.text);
+                let end_byte   = utf16_offset_to_byte_offset(doc, end_utf16);
+                if start_byte < end_byte {
+                    doc.drain(start_byte..end_byte);
                 }
             }
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        fn op(op_type: OpType, position: usize, text: &str, user_id: &str) -> EditOp {
+            EditOp {
+                position,
+                text: text.to_string(),
+                op_type,
+                revision: 0,
+                user_id: user_id.to_string(),
+                client_id: None,
+            }
+        }
+
+        #[test]
+        fn insert_insert_shifts_later_op_right() {
+            // "AB" inserted at 0 by user "a" — a concurrent insert at
+            // position 2 by user "b" should shift right by 2.
+            let a = op(OpType::Insert, 2, "XY", "b");
+            let b = op(OpType::Insert, 0, "AB", "a");
+            let transformed = transform(a, &b);
+            assert_eq!(transformed.position, 4);
+        }
+
+        #[test]
+        fn insert_insert_tiebreaks_by_user_id() {
+            // same position — lower user_id wins the earlier slot.
+            let a = op(OpType::Insert, 5, "X", "b");
+            let b = op(OpType::Insert, 5, "Y", "a");
+            let transformed = transform(a, &b);
+            assert_eq!(transformed.position, 6); // "a" < "b" so a shifts right
+        }
+
+        #[test]
+        fn insert_delete_shifts_left() {
+            // delete of 3 chars at 0 happened first; insert originally at 5
+            // should shift left by 3.
+            let a = op(OpType::Insert, 5, "X", "u1");
+            let b = op(OpType::Delete, 0, "abc", "u2");
+            let transformed = transform(a, &b);
+            assert_eq!(transformed.position, 2);
+        }
+
+        #[test]
+        fn delete_insert_shifts_right() {
+            // insert of 2 chars at 0 happened first; delete originally at 5
+            // should shift right by 2.
+            let a = op(OpType::Delete, 5, "z", "u1");
+            let b = op(OpType::Insert, 0, "hi", "u2");
+            let transformed = transform(a, &b);
+            assert_eq!(transformed.position, 7);
+        }
+
+        #[test]
+        fn delete_delete_overlapping_becomes_noop() {
+            let a = op(OpType::Delete, 3, "x", "u1");
+            let b = op(OpType::Delete, 3, "y", "u2");
+            let transformed = transform(a, &b);
+            assert_eq!(transformed.text, "");
+        }
+
+        #[test]
+        fn delete_delete_shifts_left() {
+            let a = op(OpType::Delete, 5, "x", "u1");
+            let b = op(OpType::Delete, 0, "abc", "u2");
+            let transformed = transform(a, &b);
+            assert_eq!(transformed.position, 2);
+        }
+
+        #[test]
+        fn apply_insert_ascii() {
+            let mut doc = "hello world".to_string();
+            apply(&mut doc, &op(OpType::Insert, 5, ",", "u1"));
+            assert_eq!(doc, "hello, world");
+        }
+
+        #[test]
+        fn apply_delete_ascii() {
+            let mut doc = "hello, world".to_string();
+            apply(&mut doc, &op(OpType::Delete, 5, ",", "u1"));
+            assert_eq!(doc, "hello world");
+        }
+
+        #[test]
+        fn apply_insert_after_multibyte_text() {
+            // "café" — 'é' is 1 UTF-16 unit but 2 UTF-8 bytes. Inserting
+            // right after it (UTF-16 offset 4) must land after the 'é',
+            // not mid-byte, and must not panic.
+            let mut doc = "café".to_string();
+            apply(&mut doc, &op(OpType::Insert, 4, "!", "u1"));
+            assert_eq!(doc, "café!");
+        }
+
+        #[test]
+        fn apply_insert_before_emoji_surrogate_pair() {
+            // "a🎉b" — the emoji is a surrogate pair: 2 UTF-16 units,
+            // 4 UTF-8 bytes. Position 3 (UTF-16) is right after it.
+            let mut doc = "a🎉b".to_string();
+            apply(&mut doc, &op(OpType::Insert, 3, "-", "u1"));
+            assert_eq!(doc, "a🎉-b");
+        }
+
+        #[test]
+        fn apply_delete_spanning_emoji() {
+            let mut doc = "a🎉b".to_string();
+            // delete the 2 UTF-16 units the emoji occupies (offset 1..3)
+            apply(&mut doc, &op(OpType::Delete, 1, "🎉", "u1"));
+            assert_eq!(doc, "ab");
+        }
+
+        #[test]
+        fn apply_clamps_position_past_end() {
+            let mut doc = "hi".to_string();
+            apply(&mut doc, &op(OpType::Insert, 999, "!", "u1"));
+            assert_eq!(doc, "hi!");
         }
     }
 }
