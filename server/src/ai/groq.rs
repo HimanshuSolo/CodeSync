@@ -52,13 +52,37 @@ pub async fn stream_ai_response(
     let client = Client::new();
 
     // ── build the prompt ──────────────────────────────────
-    let system_prompt = format!(
-        "You are an expert {} developer and code assistant embedded in a \
-         collaborative code editor called CodeSync. You help developers \
-         understand, debug, and improve their code. Be concise and precise. \
-         Format code blocks with proper markdown.",
-        language
-    );
+    // The editor lets the user "Apply" a code block straight back into
+    // their selection (see AiMessage.tsx / applyAiSuggestion), so when
+    // there's a real selection, the model needs to be told explicitly to
+    // return the complete replacement in one block — a diff, a partial
+    // snippet, or multiple candidate blocks would silently corrupt the
+    // document if applied.
+    let system_prompt = if selected_code.trim().is_empty() {
+        format!(
+            "You are an expert {} developer and code assistant embedded in a \
+             collaborative code editor called CodeSync. You help developers \
+             understand, debug, and improve their code. Be concise and precise. \
+             Format code blocks with proper markdown.",
+            language
+        )
+    } else {
+        format!(
+            "You are an expert {} developer and code assistant embedded in a \
+             collaborative code editor called CodeSync. You help developers \
+             understand, debug, and improve their code. Be concise and precise. \
+             The user has selected a piece of code, shown below. If your answer \
+             proposes a change to it, reply with the complete replacement for \
+             that exact selection in a single ```{}\n...\n``` code block — the \
+             user can apply it directly back into the editor, so it must be the \
+             full corrected code, not a diff, not a partial snippet, and not \
+             multiple alternative blocks. Put any explanation as brief prose \
+             outside the code block. If your answer doesn't involve changing \
+             the code (e.g. the user just asked a question about it), don't \
+             include a code block at all.",
+            language, language
+        )
+    };
 
     let user_prompt = if selected_code.trim().is_empty() {
         prompt.to_string()
