@@ -10,6 +10,7 @@ pub enum ClientMessage {
     Cursor(CursorPosition),
     AiRequest(AiRequest),
     OpenFile(OpenFileRequest),
+    Chat(ChatInput),
     Ping,
 }
 
@@ -28,6 +29,7 @@ pub enum ServerMessage {
     AiDone     { message_id: String },
     UserJoined(Participant),
     UserLeft   { user_id: String },
+    Chat(ChatMessage),
     SessionState {
         document:     String,
         active_file:  Option<String>,
@@ -100,4 +102,25 @@ pub struct AiRequest {
 pub struct OpenFileRequest {
     pub path: String,
     pub document: String,
+}
+
+/// Chat message text sent by a client. The server fills in the sender's
+/// identity and timestamp before broadcasting, so the client can't spoof
+/// another participant.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatInput {
+    pub text: String,
+}
+
+/// Chat message broadcast to all participants.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatMessage {
+    pub id: String,
+    pub user_id: String,
+    pub username: String,
+    pub avatar_color: String,
+    pub text: String,
+    pub timestamp: String,
 }

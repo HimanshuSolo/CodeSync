@@ -7,7 +7,7 @@ use crate::{
     db,
     middleware::auth::CurrentUser,
     state::{AppState, SessionHandle},
-    ws::messages::{ClientMessage, EditOp, Participant, ServerMessage},
+    ws::messages::{ChatMessage, ClientMessage, EditOp, Participant, ServerMessage},
 };
 
 /// The session actor manages one collaborative session.
@@ -471,6 +471,33 @@ async fn run_actor(
                             participants: participants.clone(),
                             revision: rev as u64,
                         });
+                    }
+
+                    ClientMessage::Chat(input) => {
+                        let text = input.text.trim();
+                        if text.is_empty() {
+                            continue;
+                        }
+                        // clamp to keep a single message from flooding the
+                        // broadcast channel or the frontend's stored history
+                        let text: String = text.chars().take(2000).collect();
+
+                        let sender = participants.iter()
+                            .find(|p| p.user_id == user_id.to_string());
+                        let (username, avatar_color) = match sender {
+                            Some(p) => (p.username.clone(), p.avatar_color.clone()),
+                            None => continue, // sender already disconnected
+                        };
+
+                        let chat_msg = ChatMessage {
+                            id: Uuid::new_v4().to_string(),
+                            user_id: user_id.to_string(),
+                            username,
+                            avatar_color,
+                            text,
+                            timestamp: chrono::Utc::now().to_rfc3339(),
+                        };
+                        let _ = broadcast_tx.send(ServerMessage::Chat(chat_msg));
                     }
 
                     ClientMessage::Ping => {
