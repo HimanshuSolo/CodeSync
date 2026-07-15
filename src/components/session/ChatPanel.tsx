@@ -134,7 +134,7 @@ export default function ChatPanel({ messages, currentUserId, onSend }: ChatPanel
             value={input}
             onChange={(event) => setInput(event.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Message your collaborators..."
+            placeholder="Message..."
             className="block w-full rounded-xl border border-border bg-muted px-3 py-2.5 text-sm placeholder:text-muted-foreground focus:border-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-600"
           />
           <Button
