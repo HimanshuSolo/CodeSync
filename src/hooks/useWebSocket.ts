@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useCallback, useState } from "react";
 import { useAiStore } from "@/store/aiStore";
+import { useChatStore } from "@/store/chatStore";
 import { decodeMessage, encodeMessage } from "@/lib/ws-messages";
 import type { ClientMessage } from "@/lib/ws-messages";
 import { useSessionStore } from "@/store/sessionStore";
@@ -37,6 +38,7 @@ export function useWebSocket(
   } = useSessionStore();
 
   const { appendToken, finishStreaming } = useAiStore();
+  const { addMessage: addChatMessage } = useChatStore();
 
   // ── message handler ──────────────────────────────────
   const handleMessage = useCallback(
@@ -87,6 +89,11 @@ export function useWebSocket(
           removeParticipant(msg.payload.userId);
           break;
 
+        // chat message from any participant (including ourselves, echoed back)
+        case "chat":
+          addChatMessage(msg.payload);
+          break;
+
         case "session_deleted":
           shouldReconnectRef.current = false;
           if (reconnectRef.current) {
@@ -117,6 +124,7 @@ export function useWebSocket(
       removeParticipant,
       appendToken,
       finishStreaming,
+      addChatMessage,
       onRemoteEdit,
       onSessionDeleted,
     ],

@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation"
 import dynamic from "next/dynamic"
 import Link from "next/link"
 import type * as Monaco from "monaco-editor"
-import { Bot, Code2, Share2, Settings, ChevronLeft, Globe, Check, Loader2, Terminal, GitFork, Users } from "lucide-react"
+import { Bot, Code2, Share2, Settings, ChevronLeft, Globe, Check, Loader2, Terminal, GitFork, Users, MessageSquare } from "lucide-react"
 import { Button }    from "@/components/ui/button"
 import { Badge }     from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/resizable"
 import UserPresence  from "@/components/session/UserPresence"
 import RepositoryPanel from "@/components/session/RepositoryPanel"
+import ChatPanel     from "@/components/session/ChatPanel"
 import AiPanel       from "@/components/ai/AiPanel"
 import { CursorLayer } from "@/components/editor/CursorLayer"
 import { useAuth }   from "@/hooks/useAuth"
@@ -24,6 +25,7 @@ import { useWebSocket }  from "@/hooks/useWebSocket"
 import { useEditor }     from "@/hooks/useEditor"
 import { runnerApi, sessionApi, type RunResult } from "@/lib/api"
 import { useSessionStore } from "@/store/sessionStore"
+import { useChatStore } from "@/store/chatStore"
 import type { CodeSelection, Language, Session } from "@/types"
 import type { ClientMessage } from "@/lib/ws-messages"
 
@@ -109,6 +111,7 @@ export default function SessionPage() {
   const sessionId = params.id as string
   const { user }  = useAuth()
   const { document: doc, activeFile, setDocument, participants } = useSessionStore()
+  const { messages: chatMessages, unread: unreadChat, clearUnread: clearUnreadChat } = useChatStore()
   const [clientId] = useState(() => crypto.randomUUID())
   const currentUserId = user?.id || ""
   const editorContainerRef = useRef<HTMLDivElement | null>(null)
@@ -126,8 +129,8 @@ export default function SessionPage() {
   const [running, setRunning] = useState(false)
   const [stdin, setStdin] = useState("")
   const [sessionReady, setSessionReady] = useState(false)
-  const [sidebarMode, setSidebarMode] = useState<"repository" | "people">("repository")
-  const [mobileView, setMobileView] = useState<"files" | "editor" | "ai">("editor")
+  const [sidebarMode, setSidebarMode] = useState<"repository" | "people" | "chat">("repository")
+  const [mobileView, setMobileView] = useState<"files" | "editor" | "ai" | "chat">("editor")
   const [isDesktop, setIsDesktop] = useState(false)
   const [codeSelection, setCodeSelection] = useState<CodeSelection | null>(null)
   const sendRef = useRef<((msg: ClientMessage) => void) | null>(null)
@@ -254,6 +257,15 @@ export default function SessionPage() {
     setMobileView("editor")
   }, [send])
 
+  const handleSendChat = useCallback((text: string) => {
+    send({ type: "chat", payload: { text } })
+  }, [send])
+
+  const chatVisible = (isDesktop && sidebarMode === "chat") || (!isDesktop && mobileView === "chat")
+  useEffect(() => {
+    if (chatVisible) clearUnreadChat()
+  }, [chatVisible, chatMessages.length, clearUnreadChat])
+
   if (loading) return (
     <div className="flex h-dvh items-center justify-center bg-background">
       <div className="flex flex-col items-center gap-3">
@@ -287,7 +299,7 @@ export default function SessionPage() {
           <span className={`w-1.5 h-1.5 rounded-full ${wsColor}`} />
           <span className="text-xs capitalize text-muted-foreground">{status}</span>
         </div>
-        <div className="mt-3 grid grid-cols-2 gap-1 rounded-md bg-muted/40 p-1">
+        <div className="mt-3 grid grid-cols-3 gap-1 rounded-md bg-muted/40 p-1">
           <Button
             variant={sidebarMode === "repository" ? "secondary" : "ghost"}
             size="xs"
@@ -302,20 +314,37 @@ export default function SessionPage() {
           >
             <Users className="h-3 w-3" /> People
           </Button>
+          <Button
+            variant={sidebarMode === "chat" ? "secondary" : "ghost"}
+            size="xs"
+            className="relative"
+            onClick={() => setSidebarMode("chat")}
+          >
+            <MessageSquare className="h-3 w-3" /> Chat
+            {unreadChat > 0 && sidebarMode !== "chat" && (
+              <span className="absolute -top-1 -right-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-blue-600 text-[9px] text-white">
+                {unreadChat > 9 ? "9+" : unreadChat}
+              </span>
+            )}
+          </Button>
         </div>
       </div>
       <div className="min-h-0 flex-1 overflow-hidden">
-        {sidebarMode === "repository" ? (
+        {sidebarMode === "repository" && (
           <RepositoryPanel
             sessionId={sessionId}
             activeFile={activeFile}
             document={doc}
             onOpenFile={handleOpenRepositoryFile}
           />
-        ) : (
+        )}
+        {sidebarMode === "people" && (
           <div className="h-full overflow-y-auto py-2">
             <UserPresence ownerId={session?.ownerId} />
           </div>
+        )}
+        {sidebarMode === "chat" && (
+          <ChatPanel messages={chatMessages} currentUserId={currentUserId} onSend={handleSendChat} />
         )}
       </div>
     </div>
@@ -416,6 +445,12 @@ export default function SessionPage() {
     </div>
   )
 
+  const chatPanel = (
+    <div className="flex h-full min-w-0 flex-col overflow-hidden bg-background">
+      <ChatPanel messages={chatMessages} currentUserId={currentUserId} onSend={handleSendChat} />
+    </div>
+  )
+
   return (
     <div className="flex h-dvh flex-col overflow-hidden bg-background text-foreground">
 
@@ -484,24 +519,31 @@ export default function SessionPage() {
               {mobileView === "files" && sidebarPanel}
               {mobileView === "editor" && editorPanel}
               {mobileView === "ai" && aiPanel}
+              {mobileView === "chat" && chatPanel}
             </div>
-            <nav className="grid h-14 flex-shrink-0 grid-cols-3 border-t border-border bg-background px-1 pb-[env(safe-area-inset-bottom)]">
+            <nav className="grid h-14 flex-shrink-0 grid-cols-4 border-t border-border bg-background px-1 pb-[env(safe-area-inset-bottom)]">
               {[
                 { value: "files" as const, label: "Files", icon: GitFork },
                 { value: "editor" as const, label: "Editor", icon: Code2 },
+                { value: "chat" as const, label: "Chat", icon: MessageSquare },
                 { value: "ai" as const, label: "AI", icon: Bot },
               ].map(({ value, label, icon: Icon }) => (
                 <button
                   key={value}
                   type="button"
                   onClick={() => setMobileView(value)}
-                  className={`flex min-w-0 flex-col items-center justify-center gap-1 rounded-md text-xs transition-colors ${
+                  className={`relative flex min-w-0 flex-col items-center justify-center gap-1 rounded-md text-xs transition-colors ${
                     mobileView === value
                       ? "bg-violet-950/60 text-violet-300"
                       : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
                   }`}
                 >
                   <Icon className="h-4 w-4" />
+                  {value === "chat" && unreadChat > 0 && mobileView !== "chat" && (
+                    <span className="absolute top-1 right-[calc(50%-16px)] flex h-3.5 w-3.5 items-center justify-center rounded-full bg-blue-600 text-[9px] text-white">
+                      {unreadChat > 9 ? "9+" : unreadChat}
+                    </span>
+                  )}
                   <span>{label}</span>
                 </button>
               ))}
