@@ -86,6 +86,15 @@ export interface OpenFileRequest {
   document: string
 }
 
+export interface ChatMessage {
+  id: string
+  userId: string
+  username: string
+  avatarColor: string
+  text: string
+  timestamp: string
+}
+
 export interface AuthUser {
   id: string
   email: string

@@ -1,10 +1,11 @@
-import type { EditOp, CursorPosition, AiRequest, OpenFileRequest, Participant } from "@/types"
+import type { EditOp, CursorPosition, AiRequest, OpenFileRequest, Participant, ChatMessage } from "@/types"
 
 export type ClientMessage =
   | { type: "edit";       payload: EditOp }
   | { type: "cursor";     payload: CursorPosition }
   | { type: "ai_request"; payload: AiRequest }
   | { type: "open_file";  payload: OpenFileRequest }
+  | { type: "chat";       payload: { text: string } }
   | { type: "ping" }
 
 export type ServerMessage =
@@ -14,6 +15,7 @@ export type ServerMessage =
   | { type: "ai_done";      payload: { messageId: string } }
   | { type: "user_joined";  payload: Participant }
   | { type: "user_left";    payload: { userId: string } }
+  | { type: "chat";         payload: ChatMessage }
   | { type: "session_state";payload: { document: string; activeFile: string | null; participants: Participant[]; revision: number } }
   | { type: "session_deleted"; payload: { message: string } }
   | { type: "error";        payload: { message: string } }
