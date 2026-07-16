@@ -35,6 +35,7 @@ pub enum ServerMessage {
         active_file:  Option<String>,
         participants: Vec<Participant>,
         revision:     u64,
+        chat_history: Vec<ChatMessage>,
     },
     SessionDeleted { message: String },
     Error { message: String },
