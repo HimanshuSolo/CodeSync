@@ -216,3 +216,92 @@ pub mod sessions {
         Ok(())
     }
 }
+
+// Chat message queries
+pub mod chat_messages {
+    use sqlx::PgPool;
+    use uuid::Uuid;
+    use chrono::{DateTime, Utc};
+    use crate::errors::AppResult;
+    use crate::ws::messages::ChatMessage;
+
+    #[derive(sqlx::FromRow)]
+    struct ChatMessageRow {
+        id:           Uuid,
+        user_id:      Uuid,
+        username:     String,
+        avatar_color: String,
+        text:         String,
+        created_at:   DateTime<Utc>,
+    }
+
+    impl From<ChatMessageRow> for ChatMessage {
+        fn from(row: ChatMessageRow) -> Self {
+            ChatMessage {
+                id:           row.id.to_string(),
+                user_id:      row.user_id.to_string(),
+                username:     row.username,
+                avatar_color: row.avatar_color,
+                text:         row.text,
+                timestamp:    row.created_at.to_rfc3339(),
+            }
+        }
+    }
+
+    /// Persist a chat message already broadcast to live participants, so a
+    /// device that connects later (or reconnects) can load prior
+    /// conversation instead of seeing an empty chat panel.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn insert(
+        pool:         &PgPool,
+        id:           Uuid,
+        session_id:   Uuid,
+        user_id:      Uuid,
+        username:     &str,
+        avatar_color: &str,
+        text:         &str,
+        created_at:   DateTime<Utc>,
+    ) -> AppResult<()> {
+        sqlx::query(
+            r#"
+            INSERT INTO chat_messages (id, session_id, user_id, username, avatar_color, text, created_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            "#
+        )
+        .bind(id)
+        .bind(session_id)
+        .bind(user_id)
+        .bind(username)
+        .bind(avatar_color)
+        .bind(text)
+        .bind(created_at)
+        .execute(pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Load the most recent messages for a session, oldest first, so a
+    /// newly (re)connected client can catch up on the conversation.
+    pub async fn list_recent(
+        pool:       &PgPool,
+        session_id: Uuid,
+        limit:      i64,
+    ) -> AppResult<Vec<ChatMessage>> {
+        let mut rows = sqlx::query_as::<_, ChatMessageRow>(
+            r#"
+            SELECT id, user_id, username, avatar_color, text, created_at
+            FROM chat_messages
+            WHERE session_id = $1
+            ORDER BY created_at DESC
+            LIMIT $2
+            "#
+        )
+        .bind(session_id)
+        .bind(limit)
+        .fetch_all(pool)
+        .await?;
+
+        rows.reverse();
+        Ok(rows.into_iter().map(ChatMessage::from).collect())
+    }
+}
