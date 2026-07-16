@@ -275,6 +275,15 @@ async fn run_actor(
     let mut rev      = revision;
     let mut active_file: Option<String> = None;
     let mut participants: Vec<Participant> = Vec::new();
+    // recent chat history, kept in memory so every SessionState broadcast
+    // (e.g. on join) can hand a newly connecting client the conversation
+    // so-far — capped the same way `history` below is, to bound memory.
+    let mut chat_history: Vec<ChatMessage> = db::chat_messages::list_recent(&db, session_id, 200)
+        .await
+        .unwrap_or_else(|e| {
+            tracing::error!("Failed to load chat history for session {session_id}: {e}");
+            Vec::new()
+        });
     let mut history: Vec<EditOp> = Vec::new();
     // history[i] represents server revision `history_base_revision + i + 1`.
     // Starts at the actor's starting revision (see ops_since_client_revision)
@@ -292,6 +301,7 @@ async fn run_actor(
                     active_file:  active_file.clone(),
                     participants: participants.clone(),
                     revision:     rev as u64,
+                    chat_history: chat_history.clone(),
                 };
                 let _ = broadcast_tx.send(state_msg);
 
@@ -364,6 +374,7 @@ async fn run_actor(
                 active_file:  active_file.clone(),
                 participants: participants.clone(),
                 revision:     rev as u64,
+                chat_history: chat_history.clone(),
             });
             continue;
         }
@@ -470,6 +481,7 @@ async fn run_actor(
                             active_file: active_file.clone(),
                             participants: participants.clone(),
                             revision: rev as u64,
+                            chat_history: chat_history.clone(),
                         });
                     }
 
@@ -489,14 +501,32 @@ async fn run_actor(
                             None => continue, // sender already disconnected
                         };
 
+                        let msg_id     = Uuid::new_v4();
+                        let created_at = chrono::Utc::now();
                         let chat_msg = ChatMessage {
-                            id: Uuid::new_v4().to_string(),
+                            id: msg_id.to_string(),
                             user_id: user_id.to_string(),
-                            username,
-                            avatar_color,
-                            text,
-                            timestamp: chrono::Utc::now().to_rfc3339(),
+                            username: username.clone(),
+                            avatar_color: avatar_color.clone(),
+                            text: text.clone(),
+                            timestamp: created_at.to_rfc3339(),
                         };
+
+                        chat_history.push(chat_msg.clone());
+                        if chat_history.len() > 200 {
+                            chat_history.drain(0..chat_history.len() - 200);
+                        }
+
+                        let db2 = db.clone();
+                        tokio::spawn(async move {
+                            if let Err(e) = db::chat_messages::insert(
+                                &db2, msg_id, session_id, user_id,
+                                &username, &avatar_color, &text, created_at,
+                            ).await {
+                                tracing::error!("Failed to persist chat message: {e}");
+                            }
+                        });
+
                         let _ = broadcast_tx.send(ServerMessage::Chat(chat_msg));
                     }
 
