@@ -38,7 +38,7 @@ export function useWebSocket(
   } = useSessionStore();
 
   const { appendToken, finishStreaming } = useAiStore();
-  const { addMessage: addChatMessage } = useChatStore();
+  const { addMessage: addChatMessage, loadMessages: loadChatHistory } = useChatStore();
 
   // ── message handler ──────────────────────────────────
   const handleMessage = useCallback(
@@ -57,6 +57,13 @@ export function useWebSocket(
           setActiveFile(msg.payload.activeFile);
           setRevision(msg.payload.revision);
           setParticipants(msg.payload.participants);
+
+          // Session state is (re)broadcast to everyone on every join, so
+          // only load history the first time -- otherwise a later join
+          // would re-seed chat and duplicate messages already showing.
+          if (useChatStore.getState().messages.length === 0) {
+            loadChatHistory(msg.payload.chatHistory);
+          }
           break;
 
         // incoming edit op — already OT-resolved by server
@@ -125,6 +132,7 @@ export function useWebSocket(
       appendToken,
       finishStreaming,
       addChatMessage,
+      loadChatHistory,
       onRemoteEdit,
       onSessionDeleted,
     ],
