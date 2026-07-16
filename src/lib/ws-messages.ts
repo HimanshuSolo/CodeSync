@@ -16,7 +16,7 @@ export type ServerMessage =
   | { type: "user_joined";  payload: Participant }
   | { type: "user_left";    payload: { userId: string } }
   | { type: "chat";         payload: ChatMessage }
-  | { type: "session_state";payload: { document: string; activeFile: string | null; participants: Participant[]; revision: number } }
+  | { type: "session_state";payload: { document: string; activeFile: string | null; participants: Participant[]; revision: number; chatHistory: ChatMessage[] } }
   | { type: "session_deleted"; payload: { message: string } }
   | { type: "error";        payload: { message: string } }
   | { type: "pong" }
