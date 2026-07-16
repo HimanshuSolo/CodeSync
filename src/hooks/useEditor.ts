@@ -153,41 +153,51 @@ export function useEditor({ send, userId, clientId, language, onSelectionChange 
 
     documentRef.current = value
 
-    let index = 0
+    // Diff via common prefix AND common suffix, not prefix alone. A prefix-only
+    // diff assumes the edit is a pure insert or pure delete, but "select some
+    // text and type over it" (or any other replace) removes a middle chunk and
+    // inserts a different one in its place. Prefix-only either mis-slices the
+    // changed region, or -- when old and new text happen to be the same length
+    // -- sends no op at all, since neither the insert nor delete branch fires.
+    let prefix = 0
+    const maxPrefix = Math.min(previousValue.length, value.length)
+    while (prefix < maxPrefix && previousValue[prefix] === value[prefix]) {
+      prefix += 1
+    }
+
+    let suffix = 0
+    const maxSuffix = maxPrefix - prefix
     while (
-      index < previousValue.length &&
-      index < value.length &&
-      previousValue[index] === value[index]
+      suffix < maxSuffix &&
+      previousValue[previousValue.length - 1 - suffix] === value[value.length - 1 - suffix]
     ) {
-      index += 1
+      suffix += 1
     }
 
-    if (value.length > previousValue.length) {
-      const insertedText = value.slice(index, index + (value.length - previousValue.length))
-      const op: EditOp = {
-        position: index,
-        text: insertedText,
-        opType: "insert",
-        revision: revisionRef.current,
-        userId,
-        clientId,
-      }
+    const deletedText = previousValue.slice(prefix, previousValue.length - suffix)
+    const insertedText = value.slice(prefix, value.length - suffix)
 
-      send({ type: "edit", payload: op })
-      return
-    }
-
-    if (value.length < previousValue.length) {
-      const deletedText = previousValue.slice(index, index + (previousValue.length - value.length))
+    if (deletedText.length > 0) {
       const op: EditOp = {
-        position: index,
+        position: prefix,
         text: deletedText,
         opType: "delete",
         revision: revisionRef.current,
         userId,
         clientId,
       }
+      send({ type: "edit", payload: op })
+    }
 
+    if (insertedText.length > 0) {
+      const op: EditOp = {
+        position: prefix,
+        text: insertedText,
+        opType: "insert",
+        revision: revisionRef.current,
+        userId,
+        clientId,
+      }
       send({ type: "edit", payload: op })
     }
   }, [clientId, send, userId, setDocument])
